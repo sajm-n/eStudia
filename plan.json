@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1794507534709,
+  "rev": 1794825759794,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -565,6 +565,20 @@
       "at": 1794500851091,
       "note": "",
       "done": true
+    },
+    {
+      "id": "kmwj4wzle2wvbp",
+      "kind": "onsite",
+      "text": "Kolos",
+      "sid": "",
+      "cid": "c02",
+      "date": "2026-11-23",
+      "due": "2026-11-23",
+      "time": "11:30",
+      "url": "",
+      "at": 1794825759794,
+      "note": "",
+      "done": false
     }
   ],
   "notif": {
