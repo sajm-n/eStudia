@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1794828110632,
+  "rev": 1794902059858,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -522,7 +522,7 @@
       "url": "",
       "at": 1793691099080,
       "note": "",
-      "done": false
+      "done": true
     },
     {
       "id": "kmw2el2up6k5mr",
