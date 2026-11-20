@@ -1,7 +1,7 @@
 /* ===== Widok planu zajęć: kalendarz, widok dnia, siatka tygodnia, linia postępu i edycja zajęć ===== */
 
 import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW, DOWS } from "../config.js";
-import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, endOf, overlaps } from "../core.js";
+import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, endOf, overlaps, isLate } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, K, reduced, isDesk, wk, pre, items, dl, dlong, t5, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, toast, change, playGo } from "./sheet.js";
