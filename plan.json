@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795140740743,
+  "rev": 1795140892827,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -582,7 +582,7 @@
     {
       "id": "kmwocfsl85z0e3",
       "kind": "onsite",
-      "text": "Sprawozdanie",
+      "text": "Sprawozdanie Lab5",
       "sid": "",
       "cid": "c01",
       "date": "2026-11-23",
