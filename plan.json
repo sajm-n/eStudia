@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795191709639,
+  "rev": 1795192159841,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -564,6 +564,20 @@
       "note": "",
       "done": false,
       "cat": "report"
+    },
+    {
+      "id": "kmwp727oghpxkc",
+      "text": "",
+      "sid": "kmva4jz2roety4",
+      "cid": "",
+      "date": "",
+      "due": "2026-12-11",
+      "time": "15:50",
+      "url": "",
+      "at": 1795192159840,
+      "note": "zadania z list\nod początku do indukcji matematycznej",
+      "done": false,
+      "cat": "exam"
     }
   ],
   "notif": {
