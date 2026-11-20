@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795173460357,
+  "rev": 1795175335882,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -314,7 +314,6 @@
   "tasks": [
     {
       "id": "kmva1leh0abyui",
-      "kind": "onsite",
       "text": "Zadania z Teamsa",
       "sid": "",
       "cid": "c01",
@@ -328,7 +327,6 @@
     },
     {
       "id": "kmva1lqaoliw5q",
-      "kind": "onsite",
       "text": "Zapoznaj się z innymi",
       "sid": "",
       "cid": "c10",
@@ -342,7 +340,6 @@
     },
     {
       "id": "kmva1tc8fdaltk",
-      "kind": "onsite",
       "text": "Napierdol sie jak dziwka",
       "sid": "",
       "cid": "kmva1syj04f32j",
@@ -356,7 +353,6 @@
     },
     {
       "id": "kmvezo24zstcoe",
-      "kind": "online",
       "text": "Zadzwoń do lekarza",
       "sid": "",
       "cid": "",
@@ -374,7 +370,6 @@
     },
     {
       "id": "kmvf9wirxpdzwd",
-      "kind": "onsite",
       "text": "Zadania z Teamsa (lab2)",
       "sid": "",
       "cid": "c01",
@@ -392,7 +387,6 @@
     },
     {
       "id": "kmvfcq2uwsv35e",
-      "kind": "online",
       "text": "Zaświadczenie",
       "sid": "",
       "cid": "",
@@ -410,7 +404,6 @@
     },
     {
       "id": "kmvstnauewy0op",
-      "kind": "onsite",
       "text": "Zadanie 2 z Word",
       "sid": "",
       "cid": "c14",
@@ -428,7 +421,6 @@
     },
     {
       "id": "kmvstnulbk0oft",
-      "kind": "onsite",
       "text": "Sprawozdanie Ćw. 1",
       "sid": "",
       "cid": "c07",
@@ -442,7 +434,6 @@
     },
     {
       "id": "kmvwg1cdlqjogp",
-      "kind": "onsite",
       "text": "Sprawozdanie LAB3",
       "sid": "",
       "cid": "c14",
@@ -456,7 +447,6 @@
     },
     {
       "id": "kmvzrjixi9e2k0",
-      "kind": "onsite",
       "text": "Zadania z Teams",
       "sid": "",
       "cid": "c04",
@@ -470,7 +460,6 @@
     },
     {
       "id": "kmw0dd39475we1",
-      "kind": "onsite",
       "text": "Praca na zajęciach",
       "sid": "",
       "cid": "c04",
@@ -484,7 +473,6 @@
     },
     {
       "id": "kmw0dd9s82o0gs",
-      "kind": "onsite",
       "text": "KOLOS!!!!",
       "sid": "",
       "cid": "c04",
@@ -498,7 +486,6 @@
     },
     {
       "id": "kmw2el2up6k5mr",
-      "kind": "onsite",
       "text": "Sprawozdanie LAB2",
       "sid": "",
       "cid": "c07",
@@ -512,7 +499,6 @@
     },
     {
       "id": "kmw8xou1qrk3dz",
-      "kind": "onsite",
       "text": "kolos - 5 zadań (3 łatwe, 1 cięższe i 1 najcięższe)",
       "sid": "",
       "cid": "c01",
@@ -526,7 +512,6 @@
     },
     {
       "id": "kmwdrh2fnaziq1",
-      "kind": "onsite",
       "text": "Sprawozdanie",
       "sid": "",
       "cid": "c14",
@@ -540,7 +525,6 @@
     },
     {
       "id": "kmwj4wzle2wvbp",
-      "kind": "onsite",
       "text": "Kolos",
       "sid": "",
       "cid": "c02",
@@ -554,7 +538,6 @@
     },
     {
       "id": "kmwocfehe3e1o4",
-      "kind": "onsite",
       "text": "Sprawozdanie Lab6",
       "sid": "",
       "cid": "c07",
@@ -569,11 +552,10 @@
     },
     {
       "id": "kmwocfsl85z0e3",
-      "kind": "onsite",
-      "text": "Sprawozdanie Lab5",
-      "sid": "",
-      "cid": "c01",
-      "date": "2026-11-23",
+      "text": "",
+      "sid": "kmva1m6h9dpd0q",
+      "cid": "",
+      "date": "",
       "due": "2026-11-23",
       "time": "08:00",
       "url": "",
@@ -584,6 +566,11 @@
     }
   ],
   "notif": {
+    "task": {
+      "m": "day",
+      "days": 1,
+      "time": "17:00"
+    },
     "onsite": {
       "m": "day",
       "days": 1,
