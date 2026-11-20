@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795140940839,
+  "rev": 1795140943072,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -219,7 +219,7 @@
           "desc": "piątek 11:30 - 13:00 ox 126\ne-mail: a.prus@pollub.pl"
         }
       },
-      "mac": ""
+      "mac": "yes"
     },
     {
       "id": "kmva1lv76ygz0j",
