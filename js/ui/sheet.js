@@ -42,6 +42,8 @@ export function openSheet(title, html, focusSel) {
 
 export function closeSheet() {
   if (!ui.shOpen) return;
+  const wasDrop = ui.ctx && ui.ctx.view === "drop";
+  if (wasDrop) ui.ctx = {};
   app.flushSave();
   if (askRes) {
     const r = askRes;
@@ -66,6 +68,7 @@ export function closeSheet() {
   };
   if (reduced()) fin();
   else setTimeout(fin, 230);
+  if (wasDrop) app.render();
 }
 
 export function hideToast() {

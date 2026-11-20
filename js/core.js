@@ -397,6 +397,7 @@ export function validatePlan(raw) {
     const o = { date: x.date };
     if (x.off === true) {
       o.off = true;
+      if (typeof x.toDate === "string" && x.toDate !== x.date && fromDK(x.toDate)) o.toDate = x.toDate;
     } else if (typeof x.fromDate === "string" && x.fromDate !== x.date && fromDK(x.fromDate)) {
       o.fromDate = x.fromDate;
     } else {
@@ -440,6 +441,20 @@ export function validatePlan(raw) {
 export function dayOverrideOf(plan, dateKey) {
   const list = Array.isArray(plan && plan.dayOverrides) ? plan.dayOverrides : [];
   return list.find((x) => x.date === dateKey) || null;
+}
+
+/* Zwraca powiązaną datę (do przeskoku po kliknięciu w etykietę przeniesienia dnia) albo null */
+export function dayOverrideTarget(plan, dateKey) {
+  const ov = dayOverrideOf(plan, dateKey);
+  if (!ov) return null;
+  if (ov.fromDate) return ov.fromDate;
+  if (ov.toDate) return ov.toDate;
+  if (ov.off) {
+    const list = Array.isArray(plan && plan.dayOverrides) ? plan.dayOverrides : [];
+    const paired = list.find((x) => x.fromDate === dateKey);
+    if (paired) return paired.date;
+  }
+  return null;
 }
 
 /* ----- Nieobecności na zajęciach ----- */

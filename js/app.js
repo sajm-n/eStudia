@@ -52,10 +52,7 @@ function renderTabs() {
   }
   $("ttl").textContent = TABS[ui.tab];
   $("ed").hidden = ui.tab !== "plan";
-  if (ui.tab !== "plan") {
-    $("ebar").hidden = true;
-    $("fab").hidden = true;
-  }
+  if (ui.tab !== "plan") $("fab").hidden = true;
   document.body.classList.toggle("edit", ui.editMode && ui.tab === "plan");
   if (ui.tab === "tasks") renderTasks();
   if (ui.tab === "subj") renderSubjects();
@@ -485,6 +482,13 @@ document.addEventListener("click", (e) => {
   else if (k === "add") { openForm({ mode: "new" }); return; }
   else if (k === "daymove") { openDayMove(v); return; }
   else if (k === "dayreset") { resetDayOverride(v); return; }
+  else if (k === "jump") {
+    const d = fromDK(v);
+    if (!d) return;
+    ui.sel = d;
+    ui.mo = new Date(d.getFullYear(), d.getMonth(), 1);
+    ui.mcalOpen = false;
+  }
   else if (k === "chip") {
     if (conflict) openConflict();
     else openSettings();
@@ -492,7 +496,7 @@ document.addEventListener("click", (e) => {
   }
   render();
   if (toPlan) $("scroller").scrollTo(0, 0);
-  if (k === "s" || k === "today" || k === "tv" || k === "hd") playGo();
+  if (k === "s" || k === "today" || k === "jump" || k === "tv" || k === "hd") playGo();
 });
 
 /* Gest przesuwania tygodni na pasku kalendarza oraz dni na liście dnia (telefon) */

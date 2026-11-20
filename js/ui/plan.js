@@ -1,7 +1,7 @@
 /* ===== Widok planu zajęć: kalendarz, widok dnia, siatka tygodnia, linia postępu i edycja zajęć ===== */
 
 import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW, DOWS } from "../config.js";
-import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, endOf, overlaps, isLate, taskGroup, isExamTask, absencesOf, isAbsentOn, absenceLimit, dayOverrideOf } from "../core.js";
+import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, endOf, overlaps, isLate, taskGroup, isExamTask, absencesOf, isAbsentOn, absenceLimit, dayOverrideOf, dayOverrideTarget } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, K, reduced, isDesk, wk, pre, items, dl, dlong, t5, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, toast, change, playGo } from "./sheet.js";
@@ -58,7 +58,7 @@ function weekGrid(mon, td, nm) {
   const days = weekDays(mon);
   const per = days.map((d) => items(d));
   let lo = 480;
-  let hi = 960;
+  let hi = ui.editMode ? 1200 : 960;
   per.forEach((a) =>
     a.forEach((x) => {
       lo = Math.min(lo, Math.floor(mn(x.c.s) / 60) * 60);
@@ -84,19 +84,42 @@ function weekGrid(mon, td, nm) {
       .map((d) => {
         const key = dk(d);
         const ov = dayOverrideOf(cache.plan, key);
+        const target = ov ? dayOverrideTarget(cache.plan, key) : null;
+        const ovLabel = ov ? (ov.off ? ov.note || "Wolne" : "z " + dl(fromDK(ov.fromDate))) : "";
+        const ovTitle = ov
+          ? (ov.off ? ov.note || "Dzień wolny" : "Plan z " + dl(fromDK(ov.fromDate))) +
+            (target ? " — kliknij, aby przejść do " + dl(fromDK(target)) : "")
+          : "";
+        const ovChip = ov
+          ? target
+            ? '<button type="button" class="wg-ov link" data-a="jump:' +
+              target +
+              '" title="' +
+              esc(ovTitle) +
+              '">' +
+              esc(ovLabel) +
+              "</button>"
+            : '<span class="wg-ov" title="' + esc(ovTitle) + '">' + esc(ovLabel) + "</span>"
+          : "";
         const ovTag = ov
-          ? '<span class="wg-ov" title="' +
-            esc(ov.off ? ov.note || "Dzień wolny" : "Plan z " + dl(fromDK(ov.fromDate))) +
-            '">' +
-            esc(ov.off ? ov.note || "Wolne" : "z " + dl(fromDK(ov.fromDate))) +
-            "</span>" +
+          ? ovChip +
             (ui.editMode ? '<button type="button" class="wg-rst" data-a="dayreset:' + key + '">Przywróć</button>' : "")
+          : "";
+        const editAttr = ui.editMode
+          ? ' data-a="daymove:' +
+            key +
+            '" role="button" tabindex="0" title="Kliknij, aby przenieść lub zamienić dzień (' +
+            esc(dl(d)) +
+            ')"'
           : "";
         return (
           '<div class="wg-d' +
           (same(d, td) ? " td" : "") +
-          '" aria-label="' +
-          esc(dlong(d)) +
+          (ui.editMode ? " edday" : "") +
+          '"' +
+          editAttr +
+          ' aria-label="' +
+          esc(dlong(d) + (ui.editMode ? " — przenieś lub zamień dzień" : "")) +
           '"><span>' +
           DOWS[wd(d)] +
           "</span><b>" +
@@ -285,7 +308,9 @@ function card(it, cls, badge) {
     (it.base.date ? "1" : "0") +
     '"' +
     act +
-    '><div class="tm">' +
+    '>' +
+    (ui.editMode && !it.off ? '<div class="c-drag" aria-hidden="true" title="Przytrzymaj uchwyt, aby przesunąć"><i></i></div>' : "") +
+    '<div class="tm">' +
     (open.length ? '<i class="tkdot' + (hasExam ? " exam" : "") + '" aria-hidden="true"></i>' : "") +
     "<b>" +
     esc(fmtT(c.s)) +
@@ -300,7 +325,6 @@ function card(it, cls, badge) {
     tags.join("") +
     "</div></div>" +
     badge +
-    (ui.editMode && !it.off ? '<span class="c-drag" aria-hidden="true" title="Przeciągnij, aby zmienić godzinę lub dzień">⋮⋮</span>' : "") +
     "</div>"
   );
 }
@@ -389,11 +413,21 @@ function dayOverrideBanner(d) {
   const key = dk(d);
   const ov = dayOverrideOf(cache.plan, key);
   if (!ov) return "";
+  const target = dayOverrideTarget(cache.plan, key);
   const txt = ov.off
     ? "<b>Dzień wolny</b>" + (ov.note ? " · " + esc(ov.note) : "")
     : "<b>Przeniesiony plan:</b> zajęcia z " + esc(dlong(fromDK(ov.fromDate)));
-  const rst = ui.editMode ? '<button type="button" data-a="dayreset:' + key + '">Przywróć dzień</button>' : "";
-  return '<div class="dayov"><span>' + txt + "</span>" + rst + "</div>";
+  const main = target
+    ? '<button type="button" class="dayov-jump" data-a="jump:' +
+      target +
+      '" title="Przejdź do ' +
+      esc(dl(fromDK(target))) +
+      '"><span>' +
+      txt +
+      '</span><b aria-hidden="true">→</b></button>'
+    : "<span>" + txt + "</span>";
+  const rst = ui.editMode ? '<button type="button" class="dayov-rst" data-a="dayreset:' + key + '">Przywróć</button>' : "";
+  return '<div class="dayov">' + main + rst + "</div>";
 }
 
 function dayHtml(d, live) {
@@ -579,29 +613,34 @@ export function renderPlan() {
     let rh = '<span class="wl">' + (pre(rs) ? "" : wk(rs)) + "</span>";
     for (let c = 0; c < 7; c++) {
       const d = new Date(rs.getFullYear(), rs.getMonth(), rs.getDate() + c);
-      const dt = dots[dk(d)];
+      const dKey = dk(d);
+      const dt = dots[dKey];
+      const isSel = same(d, ui.sel);
+      const editActiveDay = !deskM && ui.editMode && isSel;
       const cl = [
         om && d.getMonth() !== om - 1 ? "out" : "",
         c > 4 ? "we" : "",
         same(d, td) ? "td" : "",
-        same(d, ui.sel) ? "on" : "",
+        isSel ? "on" : "",
+        editActiveDay ? "edday" : "",
         !pre(d) && items(d).some((x) => !x.off) ? "hs" : "",
         dt ? (dt.late ? "tk late" : dt.exam ? "tk exam" : "tk") : "",
         inSel ? "wkr" : "",
         c === 0 ? "w0" : "",
         c === 6 ? "w6" : "",
       ].join(" ");
+      const act = editActiveDay
+        ? "daymove:" + dKey
+        : "s:" + d.getFullYear() + "," + d.getMonth() + "," + d.getDate();
       rh +=
         '<button type="button" class="' +
         cl +
-        '" data-a="s:' +
-        d.getFullYear() +
-        "," +
-        d.getMonth() +
-        "," +
-        d.getDate() +
+        '" data-day="' +
+        dKey +
+        '" data-a="' +
+        act +
         '" aria-label="' +
-        esc(dlong(d)) +
+        esc(dlong(d) + (editActiveDay ? " — przenieś lub zamień dzień" : "")) +
         (dt ? ", zadań do zrobienia: " + dt.n + (dt.exam ? " (kolokwium)" : "") + (dt.late ? " (po terminie)" : "") : "") +
         '">' +
         d.getDate() +
@@ -704,7 +743,6 @@ export function renderPlan() {
   document.body.classList.toggle("edit", ui.editMode);
   $("ed").textContent = ui.editMode ? "Gotowe" : "Edytuj";
   $("ed").setAttribute("aria-pressed", ui.editMode ? "true" : "false");
-  $("ebar").hidden = !ui.editMode;
   $("fab").hidden = !ui.editMode;
 
   const sw = cache.plan.startWeek;
@@ -1299,7 +1337,7 @@ export function openDayMove(defaultFromDate) {
         if (note) entry.note = note;
         list.push(entry);
       } else if (mode === "overwrite") {
-        list.push({ date: a, off: true, note: "Przeniesiono na " + dl(fromDK(b)) });
+        list.push({ date: a, off: true, toDate: b, note: "Przeniesiono na " + dl(fromDK(b)) });
         list.push({ date: b, fromDate: a });
       } else {
         list.push({ date: a, fromDate: b });

@@ -18,6 +18,7 @@ import {
   isAbsentOn,
   absenceLimit,
   dayOverrideOf,
+  dayOverrideTarget,
   isLate,
   fromDK,
   dk,
@@ -242,6 +243,8 @@ test("dayOverrides (nadpisanie, zamiana, dzień wolny) oraz jednorazowe przenies
 
   assert.equal(dayOverrideOf(p, "2026-11-11").off, true);
   assert.equal(dayOverrideOf(p, "2026-11-13").fromDate, "2026-11-11");
+  assert.equal(dayOverrideTarget(p, "2026-11-11"), "2026-11-13");
+  assert.equal(dayOverrideTarget(p, "2026-11-13"), "2026-11-11");
 
   // Środa 11.11 pusta, piątek 13.11 ma zajęcia ze środy 11.11, a kolejny piątek 20.11 bez zmian!
   assert.deepEqual(itemsFor(p, fromDK("2026-11-11")).map((x) => x.id), []);

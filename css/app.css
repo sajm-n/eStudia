@@ -507,15 +507,23 @@ body.go .cg button.on{animation:daypop .4s cubic-bezier(.34,1.56,.5,1)}
 .sem-acts{display:flex;gap:6px;flex:none}
 .sem-acts .btn{min-height:36px;padding:0 11px;font-size:13px}
 .chkrow{display:flex;align-items:center;gap:8px;margin:8px 0 12px;font-size:14px;color:var(--tx);cursor:pointer}
+.chkrow[hidden]{display:none}
 .chkrow input{width:18px;height:18px;accent-color:var(--ac)}
 
-/* ===== v2.5a: Przenoszenie dni, dzień wolny i jednorazowe przenoszenie zajęć ===== */
-.ebar-acts{display:flex;align-items:center;gap:6px;flex:none}
+/* ===== v2.5a/v2.5.1: Przenoszenie dni, dzień wolny i klikalne komunikaty zamiany ===== */
 .dayov{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;margin:0 0 10px;border-radius:12px;border:1px solid color-mix(in srgb,var(--warn) 60%,var(--bd));background:color-mix(in srgb,var(--warn) 10%,var(--card));font-size:13px;color:var(--tx)}
 .dayov b{color:var(--warn)}
-.dayov button{flex:none;font-size:12.5px;font-weight:700;color:var(--ac);padding:4px 8px;border-radius:8px;border:1px solid var(--ac);background:var(--card)}
+.dayov-jump{flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;padding:0;color:inherit;cursor:pointer}
+.dayov-jump:hover span{text-decoration:underline}
+.dayov-rst{flex:none;font-size:12.5px;font-weight:700;color:var(--ac);padding:4px 8px;border-radius:8px;border:1px solid var(--ac);background:var(--card)}
 .wg-ov{display:inline-block;margin-top:2px;padding:1px 6px;border-radius:99px;font-size:10px;font-weight:700;color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wg-ov.link{cursor:pointer;border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);transition:background-color .15s,border-color .15s}
+.wg-ov.link:hover{background:color-mix(in srgb,var(--warn) 26%,transparent);border-color:var(--warn)}
 .wg-d .wg-rst{margin-top:2px;font-size:10px;font-weight:700;color:var(--ac);text-decoration:underline;padding:0 4px}
+.wg-d.edday{cursor:pointer;transition:background-color .15s}
+.wg-d.edday:hover{background:color-mix(in srgb,var(--ac) 11%,transparent)}
+.wg-d.edday b{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--ac) 55%,transparent)}
+.edit #cal .cg button.edday{box-shadow:0 0 0 2px var(--card),0 0 0 3.5px var(--ac)}
 
 /* ===== v2.5b: Drag & Drop na siatce tygodnia (Desktop) ===== */
 body.dragging,body.dragging *{cursor:grabbing !important;-webkit-user-select:none;user-select:none}
@@ -548,17 +556,27 @@ body.resizing,body.resizing *{cursor:ns-resize !important;-webkit-user-select:no
 .hdn>.navb.drag-nav-hover{background:color-mix(in srgb,var(--ac) 14%,var(--card));box-shadow:0 0 0 4px color-mix(in srgb,var(--ac) 36%,transparent);transform:scale(1.22)}
 .hdn>.navb.drag-nav-hover::before{animation:navdwell 550ms linear forwards}
 
-/* ===== v2.5: Drag & Drop na Telefonie (uchwyt ⋮⋮, pływający podgląd, kalendarz #cal i krawędzie ekranu) ===== */
-.c-drag{flex:none;width:36px;display:grid;place-items:center;font-size:18px;letter-spacing:-2px;color:var(--mut);border-left:1px dashed var(--bd);touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none}
-.c.drag-src{opacity:.35 !important;transform:scale(.98)}
+/* ===== v2.5.1: Drag & Drop na Telefonie (górny uchwyt, pełny kafelek kurczący się nad kalendarzem, krawędzie) ===== */
+.edit .c{flex-wrap:wrap}
+.c-drag{flex:0 0 100%;height:24px;display:flex;align-items:center;justify-content:center;border-bottom:1px dashed color-mix(in srgb,var(--bd) 75%,transparent);background:color-mix(in srgb,var(--tx) 3%,transparent);touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none}
+.c-drag i{display:block;width:38px;height:4px;border-radius:99px;background:var(--mut);opacity:.55;transition:width .16s ease,background-color .16s ease,opacity .16s ease}
+.c-drag.arming i{width:54px;background:var(--ac);opacity:1}
+.c.drag-src{opacity:.28 !important;transform:scale(.98)}
 body.mob-dragging .scroller{overflow:hidden !important;touch-action:none}
 
-.drag-pill{position:fixed;left:50%;transform:translateX(-50%);z-index:85;pointer-events:none;max-width:min(90vw,340px);padding:8px 14px;border-radius:14px;border:2px solid var(--ac);box-shadow:0 12px 30px rgba(10,20,40,.34);color:#17202e;text-align:center}
-.drag-pill.w{background:var(--wyk)}.drag-pill.l{background:var(--lab)}.drag-pill.c2{background:var(--cw)}.drag-pill.x{background:var(--oth)}
-.drag-pill .dp-time{display:block;font-size:15px;font-weight:800;white-space:nowrap}
-.drag-pill .dp-name{display:block;font-size:12px;font-weight:600;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .drag-pill{color:#f3f5fa}}
-:root[data-theme="dark"] .drag-pill{color:#f3f5fa}
+.drag-card-ghost{position:fixed;z-index:85;margin:0;pointer-events:none;box-sizing:border-box;border:2px solid var(--ac);border-radius:12px;background:var(--card);box-shadow:0 16px 38px rgba(10,20,40,.36);overflow:hidden;transform:scale(1.02);transition:width .18s cubic-bezier(.2,.8,.2,1),border-radius .18s ease,transform .18s ease,box-shadow .18s ease}
+.drag-card-ghost .dcg-full{display:flex;position:relative;width:100%}
+.drag-card-ghost .dcg-day{position:absolute;top:6px;right:8px;padding:2px 8px;border-radius:99px;background:var(--ac);color:var(--acx);font-size:11px;font-weight:800}
+.drag-card-ghost .dcg-day[hidden]{display:none}
+.drag-card-ghost .dcg-pill{display:none;padding:8px 14px;text-align:center;color:#17202e}
+.drag-card-ghost.compact{border-radius:16px;transform:scale(.96);box-shadow:0 10px 26px rgba(10,20,40,.32)}
+.drag-card-ghost.compact .dcg-full{display:none}
+.drag-card-ghost.compact .dcg-pill{display:block}
+.drag-card-ghost.compact.w{background:var(--wyk)}.drag-card-ghost.compact.l{background:var(--lab)}.drag-card-ghost.compact.c2{background:var(--cw)}.drag-card-ghost.compact.x{background:var(--oth)}
+.drag-card-ghost .dp-time{display:block;font-size:14px;font-weight:800;white-space:nowrap}
+.drag-card-ghost .dp-name{display:block;font-size:12px;font-weight:600;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .drag-card-ghost .dcg-pill{color:#f3f5fa}}
+:root[data-theme="dark"] .drag-card-ghost .dcg-pill{color:#f3f5fa}
 
 .drag-hint.mob{left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);max-width:92vw;white-space:normal;text-align:center;font-size:12px;padding:7px 14px}
 
@@ -578,3 +596,4 @@ body.mob-dragging .scroller{overflow:hidden !important;touch-action:none}
 .drag-edge .de-day{font-size:11px;font-weight:800;position:relative;z-index:1}
 .drag-edge .de-bar{position:absolute;inset:0;background:color-mix(in srgb,var(--ac) 22%,transparent);transform-origin:bottom center;transform:scaleY(0)}
 .drag-edge.dwell .de-bar{animation:edgedwell 600ms linear forwards}
+
