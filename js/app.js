@@ -37,7 +37,7 @@ import {
   switchSemester,
   deleteSemester,
 } from "./ui/settings.js";
-import { initDrag, shouldSuppressClick } from "./ui/drag.js";
+import { initDrag, isDragging, shouldSuppressClick } from "./ui/drag.js";
 
 function renderTabs() {
   for (const k in TABS) {
@@ -522,7 +522,7 @@ document.addEventListener("click", (e) => {
   let ly0 = 0;
   let lon = false;
   lst.addEventListener("touchstart", (e) => {
-    if (isDesk() || ui.shOpen || e.touches.length !== 1) { lon = false; return; }
+    if (isDesk() || ui.shOpen || isDragging() || e.touches.length !== 1) { lon = false; return; }
     lx0 = e.touches[0].clientX;
     ly0 = e.touches[0].clientY;
     lon = true;
@@ -530,7 +530,7 @@ document.addEventListener("click", (e) => {
   lst.addEventListener("touchend", (e) => {
     if (!lon) return;
     lon = false;
-    if (isDesk() || ui.shOpen) return;
+    if (isDesk() || ui.shOpen || isDragging()) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - lx0;
     const dy = t.clientY - ly0;

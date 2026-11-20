@@ -267,7 +267,7 @@ function card(it, cls, badge) {
     (hasExam ? ", kolokwium" : "") +
     (open.length ? ", nieukończone zadania: " + open.length : "") +
     '"';
-  const data = it.off ? "" : ' data-s="' + mn(c.s) + '" data-e="' + mn(c.e) + '"';
+  const data = ' data-s="' + mn(c.s) + '" data-e="' + mn(c.e) + '"';
   return (
     '<div class="c ' +
     K[c.type] +
@@ -279,6 +279,10 @@ function card(it, cls, badge) {
     esc(it.id) +
     '" data-date="' +
     esc(it.date) +
+    '" data-orig="' +
+    esc(it.origDate || it.date) +
+    '" data-once="' +
+    (it.base.date ? "1" : "0") +
     '"' +
     act +
     '><div class="tm">' +
@@ -296,6 +300,7 @@ function card(it, cls, badge) {
     tags.join("") +
     "</div></div>" +
     badge +
+    (ui.editMode && !it.off ? '<span class="c-drag" aria-hidden="true" title="Przeciągnij, aby zmienić godzinę lub dzień">⋮⋮</span>' : "") +
     "</div>"
   );
 }

@@ -1,7 +1,7 @@
-/* ===== Drag & Drop na siatce tygodnia (Desktop) — zmiana godzin, dnia, resize i zmiana tygodnia ===== */
+/* ===== Drag & Drop: Desktop (siatka tygodnia + resize + zmiana tygodnia) i Mobile (uchwyt/long-press + kalendarz + krawędzie) ===== */
 
-import { DOW } from "../config.js";
-import { pad, wd, fromDK, fmtT, mn, uid } from "../core.js";
+import { DOW, DOWS } from "../config.js";
+import { pad, wd, dk, fromDK, fmtT, uid } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, isDesk, dl, dlong, ui, app } from "../state.js";
 import { openSheet, closeSheet, change } from "./sheet.js";
@@ -12,9 +12,20 @@ const SNAP = 15; // skok w minutach
 const MIN_M = 360; // 06:00
 const MAX_M = 1320; // 22:00
 const HOVER_DELAY = 550; // ms najechania na strzałkę tygodnia
+const EDGE_DELAY = 600; // ms przy krawędzi ekranu na telefonie
+const LONG_PRESS_MS = 280; // ms przytrzymania kafelka na telefonie
+const EDGE_PX = 38; // szerokość strefy krawędzi ekranu (px)
 
 const toTime = (m) => pad(Math.floor(m / 60)) + ":" + pad(m % 60);
 const snapMin = (m) => Math.round(m / SNAP) * SNAP;
+
+/* Kolejny dzień roboczy z pomijaniem soboty (5) i niedzieli (6): Pt → Pn, Pn → Pt */
+export function nextWorkday(dateObj, dir) {
+  const step = dir >= 0 ? 1 : -1;
+  const d = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + step);
+  while (wd(d) >= 5) d.setDate(d.getDate() + step);
+  return d;
+}
 
 let active = null;
 let suppressClickUntil = 0;
@@ -64,7 +75,16 @@ function commitDrop(info) {
         }
       }
     }, "Przeniesiono na " + dl(fromDK(newDate)) + ", " + fmtT(newS) + "–" + fmtT(newE));
-    if (ok) closeSheet();
+    if (ok) {
+      if (newDate !== date) {
+        const nd = fromDK(newDate);
+        ui.sel = nd;
+        ui.mo = new Date(nd.getFullYear(), nd.getMonth(), 1);
+        ui.lastFill = {};
+      }
+      closeSheet();
+      app.render();
+    }
   };
 
   const applyPerm = (moveTasks) => {
@@ -87,7 +107,16 @@ function commitDrop(info) {
         }
       }
     }, "Zmieniono na stałe: " + DOW[newWd] + ", " + fmtT(newS) + "–" + fmtT(newE));
-    if (ok) closeSheet();
+    if (ok) {
+      if (newDate !== date) {
+        const nd = fromDK(newDate);
+        ui.sel = nd;
+        ui.mo = new Date(nd.getFullYear(), nd.getMonth(), 1);
+        ui.lastFill = {};
+      }
+      closeSheet();
+      app.render();
+    }
   };
 
   /* Zajęcia jednorazowe bez zadań: zapis od razu z toastem Cofnij */
@@ -97,8 +126,7 @@ function commitDrop(info) {
   }
 
   const targetD = fromDK(newDate);
-  const sub =
-    esc(dlong(targetD)) + " · " + esc(fmtT(newS)) + "–" + esc(fmtT(newE));
+  const sub = esc(dlong(targetD)) + " · " + esc(fmtT(newS)) + "–" + esc(fmtT(newE));
   const taskChk = tasks.length
     ? '<label class="chkrow"><input type="checkbox" id="drgMoveTasks"><span>Przenieś też terminy zadań z tych zajęć (' +
       tasks.length +
@@ -149,6 +177,27 @@ function clearHoverNav() {
   }
 }
 
+function clearEdgeNav() {
+  if (!active) return;
+  if (active.edgeTimer) {
+    clearTimeout(active.edgeTimer);
+    active.edgeTimer = 0;
+  }
+  active.edgeDir = 0;
+  if (active.edgeEl) {
+    active.edgeEl.remove();
+    active.edgeEl = null;
+  }
+}
+
+function clearCalDayHover() {
+  if (!active) return;
+  if (active.calDayEl) {
+    active.calDayEl.classList.remove("drag-day-over");
+    active.calDayEl = null;
+  }
+}
+
 function markWeekButtons(on) {
   document.querySelectorAll('#list [data-a="wk:-1"], #list [data-a="wk:1"]').forEach((b) => {
     b.classList.toggle("drag-nav-ready", on);
@@ -156,15 +205,27 @@ function markWeekButtons(on) {
   });
 }
 
+function markCalReady(on) {
+  const cal = $("cal");
+  if (cal) cal.classList.toggle("drag-cal-ready", on);
+}
+
 function cleanup() {
   if (!active) return;
+  if (active.lpTimer) {
+    clearTimeout(active.lpTimer);
+    active.lpTimer = 0;
+  }
   clearHoverNav();
+  clearEdgeNav();
+  clearCalDayHover();
   markWeekButtons(false);
+  markCalReady(false);
   if (active.ghost) active.ghost.remove();
   if (active.dropEl) active.dropEl.remove();
   if (active.hintEl) active.hintEl.remove();
   if (active.srcEl) active.srcEl.classList.remove("drag-src", "drag-resizing");
-  document.body.classList.remove("dragging", "resizing");
+  document.body.classList.remove("dragging", "resizing", "mob-dragging");
   active = null;
 }
 
@@ -175,13 +236,14 @@ function createDropEl() {
   return el;
 }
 
+/* ----- Desktop: ruch i zmiana rozmiaru na siatce tygodnia ----- */
 function updateDesktopMove(clientX, clientY) {
   if (!active) return;
   const g = active.ghost;
   g.style.left = clientX - active.offX + "px";
   g.style.top = clientY - active.offY + "px";
 
-  /* Sprawdź najechanie kursorem na strzałki zmiany tygodnia ‹ / › (z marginesem 14 px) */
+  /* Najechanie kursorem na strzałki zmiany tygodnia ‹ / › */
   const navBtns = [...document.querySelectorAll('#list [data-a="wk:-1"], #list [data-a="wk:1"]')];
   let hitBtn = null;
   for (const b of navBtns) {
@@ -202,7 +264,6 @@ function updateDesktopMove(clientX, clientY) {
         if (!active || active.hoverBtn !== hitBtn) return;
         shiftWeek(dir);
         markWeekButtons(true);
-        /* Po render() przycisk w DOM jest nowy — znajdź go i podtrzymaj cykl przy dalszym trzymaniu */
         const freshBtn = document.querySelector('#list [data-a="wk:' + dir + '"]');
         active.hoverBtn = freshBtn;
         if (freshBtn) {
@@ -215,7 +276,6 @@ function updateDesktopMove(clientX, clientY) {
     }
   }
 
-  /* Znajdź kolumnę dnia pod kursorem */
   const cols = [...document.querySelectorAll("#list .wg-c[data-date]")];
   let col = null;
   for (const c of cols) {
@@ -244,7 +304,6 @@ function updateDesktopMove(clientX, clientY) {
   active.newS = toTime(sMin);
   active.newE = toTime(eMin);
 
-  /* Podgląd zrzutu w kolumnie */
   if (active.dropEl.parentElement !== col) col.appendChild(active.dropEl);
   const top = ((sMin - lo) / 60) * WG_H + 1;
   const h = Math.max(22, (dur / 60) * WG_H - 3);
@@ -254,7 +313,6 @@ function updateDesktopMove(clientX, clientY) {
   active.dropEl.querySelector("b").textContent = fmtT(active.newS) + "–" + fmtT(active.newE);
   active.dropEl.querySelector("span").textContent = active.name;
 
-  /* Zaktualizuj godzinę i dzień na pływającym duchu */
   const dObj = fromDK(active.newDate);
   g.querySelector(".dg-time").textContent =
     (dObj ? DOW[wd(dObj)].slice(0, 3) + " " + dObj.getDate() + " · " : "") + fmtT(active.newS) + "–" + fmtT(active.newE);
@@ -274,85 +332,334 @@ function updateDesktopResize(clientY) {
   if (bEl) bEl.textContent = fmtT(active.newS) + "–" + fmtT(active.newE);
 }
 
+/* ----- Mobile: pionowa zmiana godziny + kalendarz #cal + krawędzie ekranu (pomijanie weekendów) ----- */
+function startMobileDrag(clientX, clientY) {
+  if (!active || active.started) return;
+  active.started = true;
+  if (active.lpTimer) {
+    clearTimeout(active.lpTimer);
+    active.lpTimer = 0;
+  }
+  try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+  document.body.classList.add("dragging", "mob-dragging");
+  active.srcEl.classList.add("drag-src");
+  markCalReady(true);
+
+  const pill = document.createElement("div");
+  pill.className = "drag-pill " + active.typeCls;
+  pill.innerHTML = '<b class="dp-time"></b><span class="dp-name">' + esc(active.name) + "</span>";
+  document.body.appendChild(pill);
+  active.ghost = pill;
+
+  const hint = document.createElement("div");
+  hint.className = "drag-hint mob";
+  hint.textContent = "Góra/dół: godzina · Kalendarz lub krawędź ekranu: inny dzień";
+  document.body.appendChild(hint);
+  active.hintEl = hint;
+
+  updateMobileMove(clientX, clientY);
+}
+
+function renderMobilePill(clientY) {
+  if (!active || !active.ghost) return;
+  const pill = active.ghost;
+  const dObj = fromDK(active.newDate);
+  const dayLabel = dObj ? DOWS[wd(dObj)] + " " + dObj.getDate() + " · " : "";
+  pill.querySelector(".dp-time").textContent = dayLabel + fmtT(active.newS) + "–" + fmtT(active.newE);
+  pill.style.top = Math.max(12, clientY - 72) + "px";
+}
+
+function showEdgeIndicator(dir, targetDate) {
+  clearEdgeNav();
+  if (!active) return;
+  active.edgeDir = dir;
+  const el = document.createElement("div");
+  el.className = "drag-edge " + (dir < 0 ? "left" : "right");
+  const lbl = DOWS[wd(targetDate)] + " " + targetDate.getDate();
+  el.innerHTML =
+    '<span class="de-arr">' +
+    (dir < 0 ? "‹" : "›") +
+    '</span><span class="de-day">' +
+    esc(lbl) +
+    '</span><i class="de-bar"></i>';
+  document.body.appendChild(el);
+  active.edgeEl = el;
+  void el.offsetWidth;
+  el.classList.add("dwell");
+
+  const fire = () => {
+    if (!active || active.edgeDir !== dir) return;
+    const nextD = nextWorkday(ui.sel, dir);
+    ui.lastFill = {};
+    ui.sel = nextD;
+    ui.mo = new Date(nextD.getFullYear(), nextD.getMonth(), 1);
+    active.newDate = dk(nextD);
+    app.render();
+    markCalReady(true);
+    try { if (navigator.vibrate) navigator.vibrate(10); } catch (e) {}
+    const following = nextWorkday(nextD, dir);
+    showEdgeIndicator(dir, following);
+    renderMobilePill(active.lastY || active.startY);
+  };
+  active.edgeTimer = setTimeout(fire, EDGE_DELAY);
+}
+
+function updateMobileMove(clientX, clientY) {
+  if (!active) return;
+  active.lastY = clientY;
+
+  /* 1. Sprawdź najechanie palcem na kalendarz nawigacyjny (#cal) */
+  const cal = $("cal");
+  const calRect = cal ? cal.getBoundingClientRect() : null;
+  const inCal =
+    calRect &&
+    clientX >= calRect.left &&
+    clientX <= calRect.right &&
+    clientY >= calRect.top &&
+    clientY <= calRect.bottom;
+
+  if (inCal) {
+    clearEdgeNav();
+    const elUnder = document.elementFromPoint(clientX, clientY);
+    const dayBtn = elUnder && elUnder.closest && elUnder.closest('#cal .cg button[data-a^="s:"]');
+    const navBtn = elUnder && elUnder.closest && elUnder.closest('#cal .ch button[data-a]');
+
+    if (dayBtn) {
+      clearHoverNav();
+      if (dayBtn !== active.calDayEl) {
+        clearCalDayHover();
+        active.calDayEl = dayBtn;
+        dayBtn.classList.add("drag-day-over");
+        const parts = dayBtn.dataset.a.slice(2).split(",").map(Number);
+        active.newDate = dk(new Date(parts[0], parts[1], parts[2]));
+      }
+      renderMobilePill(clientY);
+      return;
+    }
+
+    clearCalDayHover();
+    if (navBtn !== active.hoverBtn) {
+      clearHoverNav();
+      if (navBtn) {
+        active.hoverBtn = navBtn;
+        navBtn.classList.add("drag-nav-hover");
+        const act = navBtn.dataset.a;
+        const fireCalNav = () => {
+          if (!active || !active.hoverBtn) return;
+          const [k, v] = act.split(":");
+          if (k === "wk") shiftWeek(+v);
+          else if (k === "m") {
+            ui.mo = new Date(ui.mo.getFullYear(), ui.mo.getMonth() + +v, 1);
+            app.render();
+          }
+          markCalReady(true);
+          const fresh = document.querySelector('#cal .ch button[data-a="' + act + '"]');
+          active.hoverBtn = fresh;
+          if (fresh) {
+            void fresh.offsetWidth;
+            fresh.classList.add("drag-nav-hover");
+            active.hoverTimer = setTimeout(fireCalNav, HOVER_DELAY + 100);
+          }
+        };
+        active.hoverTimer = setTimeout(fireCalNav, HOVER_DELAY);
+      }
+    }
+    renderMobilePill(clientY);
+    return;
+  }
+
+  clearCalDayHover();
+  clearHoverNav();
+
+  /* 2. Sprawdź krawędzie ekranu (lewa / prawa) → przeskakiwanie dni z pomijaniem weekendów */
+  const edgeDir = clientX <= EDGE_PX ? -1 : clientX >= innerWidth - EDGE_PX ? 1 : 0;
+  if (edgeDir !== active.edgeDir) {
+    if (edgeDir) showEdgeIndicator(edgeDir, nextWorkday(ui.sel, edgeDir));
+    else clearEdgeNav();
+  }
+
+  /* 3. Pionowe przeciąganie góra/dół → zmiana godziny co 15 min */
+  const dy = clientY - active.startY;
+  const deltaMin = snapMin((dy / 16) * SNAP);
+  const dur = active.origE - active.origS;
+  const sMin = Math.max(MIN_M, Math.min(MAX_M - dur, active.origS + deltaMin));
+  const eMin = sMin + dur;
+  active.newS = toTime(sMin);
+  active.newE = toTime(eMin);
+
+  if (active.srcEl && active.srcEl.isConnected) {
+    const bEl = active.srcEl.querySelector(".tm b");
+    const sEl = active.srcEl.querySelector(".tm span");
+    if (bEl) bEl.textContent = fmtT(active.newS);
+    if (sEl) sEl.textContent = fmtT(active.newE);
+  }
+  renderMobilePill(clientY);
+}
+
 export function initDrag() {
   const list = $("list");
   if (!list) return;
 
   list.addEventListener("pointerdown", (e) => {
-    if (!ui.editMode || !isDesk() || ui.shOpen || e.button !== 0) return;
-    const wb = e.target.closest(".wb[data-cid]");
-    if (!wb) return;
-    const isRz = !!e.target.closest(".wb-rz");
-    const rect = wb.getBoundingClientRect();
-    const colEl = wb.closest(".wg-c[data-date]");
-    const base = cache.plan.classes.find((c) => c.id === wb.dataset.cid);
+    if (!ui.editMode || ui.shOpen || e.button !== 0) return;
+
+    /* Desktop: .wb na siatce tygodnia */
+    if (isDesk()) {
+      const wb = e.target.closest(".wb[data-cid]");
+      if (!wb) return;
+      const isRz = !!e.target.closest(".wb-rz");
+      const rect = wb.getBoundingClientRect();
+      const colEl = wb.closest(".wg-c[data-date]");
+      const base = cache.plan.classes.find((c) => c.id === wb.dataset.cid);
+      if (!base) return;
+
+      active = {
+        platform: "desk",
+        mode: isRz ? "resize" : "move",
+        pointerId: e.pointerId,
+        cid: wb.dataset.cid,
+        name: base.name,
+        typeCls: wb.classList.contains("w") ? "w" : wb.classList.contains("l") ? "l" : wb.classList.contains("c2") ? "c2" : "x",
+        date: wb.dataset.date,
+        origDate: wb.dataset.orig || wb.dataset.date,
+        isOnce: wb.dataset.once === "1",
+        origS: +wb.dataset.s,
+        origE: +wb.dataset.e,
+        newDate: wb.dataset.date,
+        newS: toTime(+wb.dataset.s),
+        newE: toTime(+wb.dataset.e),
+        startX: e.clientX,
+        startY: e.clientY,
+        offX: e.clientX - rect.left,
+        offY: e.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+        srcEl: wb,
+        colEl,
+        started: false,
+        ghost: null,
+        dropEl: null,
+        hintEl: null,
+        hoverBtn: null,
+        hoverTimer: 0,
+      };
+      return;
+    }
+
+    /* Mobile: uchwyt ⋮⋮ (od razu) lub long-press (~280 ms) na karcie .c */
+    const card = e.target.closest(".c[data-cid]");
+    if (!card || card.classList.contains("offc")) return;
+    const viaHandle = !!e.target.closest(".c-drag");
+    const base = cache.plan.classes.find((c) => c.id === card.dataset.cid);
     if (!base) return;
 
     active = {
-      mode: isRz ? "resize" : "move",
+      platform: "mob",
+      mode: "move",
+      viaHandle,
       pointerId: e.pointerId,
-      cid: wb.dataset.cid,
+      cid: card.dataset.cid,
       name: base.name,
-      typeCls: wb.classList.contains("w") ? "w" : wb.classList.contains("l") ? "l" : wb.classList.contains("c2") ? "c2" : "x",
-      date: wb.dataset.date,
-      origDate: wb.dataset.orig || wb.dataset.date,
-      isOnce: wb.dataset.once === "1",
-      origS: +wb.dataset.s,
-      origE: +wb.dataset.e,
-      newDate: wb.dataset.date,
-      newS: toTime(+wb.dataset.s),
-      newE: toTime(+wb.dataset.e),
+      typeCls: card.classList.contains("w") ? "w" : card.classList.contains("l") ? "l" : card.classList.contains("c2") ? "c2" : "x",
+      date: card.dataset.date,
+      origDate: card.dataset.orig || card.dataset.date,
+      isOnce: card.dataset.once === "1",
+      origS: +card.dataset.s,
+      origE: +card.dataset.e,
+      newDate: card.dataset.date,
+      newS: toTime(+card.dataset.s),
+      newE: toTime(+card.dataset.e),
       startX: e.clientX,
       startY: e.clientY,
-      offX: e.clientX - rect.left,
-      offY: e.clientY - rect.top,
-      width: rect.width,
-      height: rect.height,
-      srcEl: wb,
-      colEl,
+      lastY: e.clientY,
+      srcEl: card,
       started: false,
+      lpTimer: 0,
       ghost: null,
-      dropEl: null,
       hintEl: null,
       hoverBtn: null,
       hoverTimer: 0,
+      calDayEl: null,
+      edgeDir: 0,
+      edgeEl: null,
+      edgeTimer: 0,
     };
-  });
 
-  document.addEventListener("pointermove", (e) => {
-    if (!active || e.pointerId !== active.pointerId) return;
-    const dx = e.clientX - active.startX;
-    const dy = e.clientY - active.startY;
-    if (!active.started) {
-      if (Math.hypot(dx, dy) < 5) return;
-      active.started = true;
-      if (active.mode === "move") {
-        document.body.classList.add("dragging");
-        active.srcEl.classList.add("drag-src");
-        const g = document.createElement("div");
-        g.className = "drag-ghost " + active.typeCls;
-        g.style.width = Math.max(130, active.width) + "px";
-        g.style.height = Math.max(44, Math.min(active.height, 96)) + "px";
-        g.innerHTML = '<b class="dg-time"></b><span class="dg-name">' + esc(active.name) + "</span>";
-        document.body.appendChild(g);
-        active.ghost = g;
-        active.dropEl = createDropEl();
-
-        const hint = document.createElement("div");
-        hint.className = "drag-hint";
-        hint.textContent = "Upuść na wybraną godzinę · ← / → lub najedź na ‹ › aby zmienić tydzień · Esc anuluje";
-        document.body.appendChild(hint);
-        active.hintEl = hint;
-        markWeekButtons(true);
-      } else {
-        document.body.classList.add("resizing");
-        active.srcEl.classList.add("drag-resizing");
-      }
+    if (!viaHandle) {
+      const sx = e.clientX;
+      const sy = e.clientY;
+      active.lpTimer = setTimeout(() => {
+        if (active && !active.started) startMobileDrag(sx, sy);
+      }, LONG_PRESS_MS);
     }
-    e.preventDefault();
-    if (active.mode === "move") updateDesktopMove(e.clientX, e.clientY);
-    else updateDesktopResize(e.clientY);
   });
+
+  document.addEventListener(
+    "pointermove",
+    (e) => {
+      if (!active || e.pointerId !== active.pointerId) return;
+      const dx = e.clientX - active.startX;
+      const dy = e.clientY - active.startY;
+
+      if (active.platform === "desk") {
+        if (!active.started) {
+          if (Math.hypot(dx, dy) < 5) return;
+          active.started = true;
+          if (active.mode === "move") {
+            document.body.classList.add("dragging");
+            active.srcEl.classList.add("drag-src");
+            const g = document.createElement("div");
+            g.className = "drag-ghost " + active.typeCls;
+            g.style.width = Math.max(130, active.width) + "px";
+            g.style.height = Math.max(44, Math.min(active.height, 96)) + "px";
+            g.innerHTML = '<b class="dg-time"></b><span class="dg-name">' + esc(active.name) + "</span>";
+            document.body.appendChild(g);
+            active.ghost = g;
+            active.dropEl = createDropEl();
+
+            const hint = document.createElement("div");
+            hint.className = "drag-hint";
+            hint.textContent = "Upuść na wybraną godzinę · ← / → lub najedź na ‹ › aby zmienić tydzień · Esc anuluje";
+            document.body.appendChild(hint);
+            active.hintEl = hint;
+            markWeekButtons(true);
+          } else {
+            document.body.classList.add("resizing");
+            active.srcEl.classList.add("drag-resizing");
+          }
+        }
+        e.preventDefault();
+        if (active.mode === "move") updateDesktopMove(e.clientX, e.clientY);
+        else updateDesktopResize(e.clientY);
+        return;
+      }
+
+      /* Mobile */
+      if (!active.started) {
+        if (active.viaHandle) {
+          if (Math.hypot(dx, dy) >= 4) startMobileDrag(e.clientX, e.clientY);
+          return;
+        }
+        /* Long-press: jeśli palec przesunął się przed upływem 280 ms → zwykłe przewijanie */
+        if (Math.hypot(dx, dy) > 10) {
+          cleanup();
+        }
+        return;
+      }
+      e.preventDefault();
+      updateMobileMove(e.clientX, e.clientY);
+    },
+    { passive: false }
+  );
+
+  /* Zapobiegaj natywnemu scrollowaniu na iOS/Android podczas aktywnego mobilnego drag */
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (active && active.started && active.platform === "mob") e.preventDefault();
+    },
+    { passive: false }
+  );
 
   const finish = (cancelled) => {
     if (!active) return;
@@ -384,18 +691,22 @@ export function initDrag() {
     finish(true);
   });
 
-  document.addEventListener("keydown", (e) => {
-    if (!active || !active.started) return;
-    if (e.key === "Escape") {
-      e.preventDefault();
-      finish(true);
-      return;
-    }
-    if (active.mode === "move" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      shiftWeek(e.key === "ArrowLeft" ? -1 : 1);
-      markWeekButtons(true);
-    }
-  }, true);
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (!active || !active.started) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        finish(true);
+        return;
+      }
+      if (active.platform === "desk" && active.mode === "move" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        shiftWeek(e.key === "ArrowLeft" ? -1 : 1);
+        markWeekButtons(true);
+      }
+    },
+    true
+  );
 }
