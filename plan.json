@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795175335882,
+  "rev": 1795175381764,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -525,16 +525,17 @@
     },
     {
       "id": "kmwj4wzle2wvbp",
-      "text": "Kolos",
-      "sid": "",
-      "cid": "c02",
-      "date": "2026-11-23",
+      "text": "",
+      "sid": "kmva1mdse0l7qu",
+      "cid": "",
+      "date": "",
       "due": "2026-11-23",
       "time": "11:30",
       "url": "",
       "at": 1794825759794,
       "note": "",
-      "done": false
+      "done": false,
+      "cat": "exam"
     },
     {
       "id": "kmwocfehe3e1o4",
