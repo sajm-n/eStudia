@@ -516,3 +516,34 @@ body.go .cg button.on{animation:daypop .4s cubic-bezier(.34,1.56,.5,1)}
 .dayov button{flex:none;font-size:12.5px;font-weight:700;color:var(--ac);padding:4px 8px;border-radius:8px;border:1px solid var(--ac);background:var(--card)}
 .wg-ov{display:inline-block;margin-top:2px;padding:1px 6px;border-radius:99px;font-size:10px;font-weight:700;color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wg-d .wg-rst{margin-top:2px;font-size:10px;font-weight:700;color:var(--ac);text-decoration:underline;padding:0 4px}
+
+/* ===== v2.5b: Drag & Drop na siatce tygodnia (Desktop) ===== */
+body.dragging,body.dragging *{cursor:grabbing !important;-webkit-user-select:none;user-select:none}
+body.resizing,body.resizing *{cursor:ns-resize !important;-webkit-user-select:none;user-select:none}
+.edit .wb{cursor:grab}
+.wb-rz{display:none}
+.edit .wb-rz{display:block;position:absolute;left:6px;right:6px;bottom:0;height:8px;cursor:ns-resize;z-index:4}
+.edit .wb-rz::after{content:"";position:absolute;left:50%;bottom:2px;width:24px;height:3px;margin-left:-12px;border-radius:99px;background:color-mix(in srgb,currentColor 35%,transparent);opacity:0;transition:opacity .15s}
+.edit .wb:hover .wb-rz::after,.wb.drag-resizing .wb-rz::after{opacity:1}
+.wb.drag-src{opacity:.28 !important;border-style:dashed !important}
+.wb.drag-resizing{z-index:10;box-shadow:0 8px 24px rgba(0,0,0,.28);border-color:var(--ac)}
+
+.wb-drop{position:absolute;left:3px;right:3px;z-index:5;border-radius:9px;border:2px dashed var(--ac);background:color-mix(in srgb,var(--ac) 16%,var(--card));padding:4px 7px;box-sizing:border-box;pointer-events:none;overflow:hidden}
+.wb-drop b{display:block;font-size:11px;font-weight:800;color:var(--ac)}
+.wb-drop span{display:block;font-size:12px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.drag-ghost{position:fixed;z-index:80;pointer-events:none;box-sizing:border-box;padding:6px 9px;border-radius:10px;border:2px solid var(--ac);box-shadow:0 16px 36px rgba(10,20,40,.34);color:#17202e;opacity:.94;transform:scale(1.03);overflow:hidden}
+.drag-ghost.w{background:var(--wyk)}.drag-ghost.l{background:var(--lab)}.drag-ghost.c2{background:var(--cw)}.drag-ghost.x{background:var(--oth)}
+.drag-ghost .dg-time{display:block;font-size:11px;font-weight:800;opacity:.88;white-space:nowrap}
+.drag-ghost .dg-name{display:block;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .drag-ghost{color:#f3f5fa}}
+:root[data-theme="dark"] .drag-ghost{color:#f3f5fa}
+
+.drag-hint{position:fixed;left:calc(50% + var(--sw,0px)/2);bottom:20px;transform:translateX(-50%);z-index:75;padding:9px 16px;border-radius:99px;background:var(--tx);color:var(--bg);font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.3);pointer-events:none;white-space:nowrap}
+
+/* Podświetlenie i animowane wypełnianie strzałek ‹ › przy zmianie tygodnia w fazie drag */
+@keyframes navdwell{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.hdn>.navb.drag-nav-ready{position:relative;overflow:hidden;border-color:var(--ac);color:var(--ac);box-shadow:0 0 0 3px color-mix(in srgb,var(--ac) 22%,transparent);transform:scale(1.12);transition:transform .16s ease,box-shadow .2s}
+.hdn>.navb.drag-nav-ready::before{content:"";position:absolute;inset:0;background:color-mix(in srgb,var(--ac) 28%,transparent);transform-origin:left center;transform:scaleX(0);pointer-events:none}
+.hdn>.navb.drag-nav-hover{background:color-mix(in srgb,var(--ac) 14%,var(--card));box-shadow:0 0 0 4px color-mix(in srgb,var(--ac) 36%,transparent);transform:scale(1.22)}
+.hdn>.navb.drag-nav-hover::before{animation:navdwell 550ms linear forwards}

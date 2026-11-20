@@ -1,6 +1,6 @@
 /* Service worker: aplikacja działa offline. Sieć ma pierwszeństwo, więc nowe wersje trafiają
    do telefonu przy najbliższym otwarciu z internetem; pamięć podręczna jest tylko zapasem. */
-const V = "plan-v19";
+const V = "plan-v20";
 const SHELL = [
   "./",
   "./index.html",
@@ -13,6 +13,7 @@ const SHELL = [
   "./js/app.js",
   "./js/ui/sheet.js",
   "./js/ui/plan.js",
+  "./js/ui/drag.js",
   "./js/ui/tasks.js",
   "./js/ui/subjects.js",
   "./js/ui/settings.js",

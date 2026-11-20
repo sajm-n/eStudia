@@ -37,6 +37,7 @@ import {
   switchSemester,
   deleteSemester,
 } from "./ui/settings.js";
+import { initDrag, shouldSuppressClick } from "./ui/drag.js";
 
 function renderTabs() {
   for (const k in TABS) {
@@ -416,6 +417,7 @@ document.addEventListener("click", (e) => {
   }
   const cd = e.target.closest(".c[data-cid],.wb[data-cid]");
   if (cd && !ui.shOpen) {
+    if (shouldSuppressClick()) return;
     if (ui.editMode) openChooser(cd.dataset.cid, cd.dataset.date);
     else openDetail(cd.dataset.cid, cd.dataset.date);
     return;
@@ -601,6 +603,7 @@ function handleDeepLink() {
 applyTheme(getTheme());
 initOlForm();
 initTaskFilters();
+initDrag();
 render();
 handleDeepLink();
 

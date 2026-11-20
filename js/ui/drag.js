@@ -1,0 +1,401 @@
+/* ===== Drag & Drop na siatce tygodnia (Desktop) — zmiana godzin, dnia, resize i zmiana tygodnia ===== */
+
+import { DOW } from "../config.js";
+import { pad, wd, fromDK, fmtT, mn, uid } from "../core.js";
+import { cache } from "../sync.js";
+import { $, esc, isDesk, dl, dlong, ui, app } from "../state.js";
+import { openSheet, closeSheet, change } from "./sheet.js";
+import { shiftWeek } from "./plan.js";
+
+const WG_H = 52;
+const SNAP = 15; // skok w minutach
+const MIN_M = 360; // 06:00
+const MAX_M = 1320; // 22:00
+const HOVER_DELAY = 550; // ms najechania na strzałkę tygodnia
+
+const toTime = (m) => pad(Math.floor(m / 60)) + ":" + pad(m % 60);
+const snapMin = (m) => Math.round(m / SNAP) * SNAP;
+
+let active = null;
+let suppressClickUntil = 0;
+
+export function isDragging() {
+  return !!active && active.started;
+}
+
+export function shouldSuppressClick() {
+  return Date.now() < suppressClickUntil;
+}
+
+/* Okno wyboru zakresu po upuszczeniu (Jednorazowo / Na stałe / Anuluj + opcjonalne zadania) */
+function commitDrop(info) {
+  const { cid, date, origDate, isOnce, newDate, newS, newE } = info;
+  const base = cache.plan.classes.find((c) => c.id === cid);
+  if (!base) return;
+  const tasks = cache.plan.tasks.filter(
+    (t) => t.kind === "onsite" && t.cid === cid && (t.date === date || t.date === origDate) && !t.done
+  );
+
+  const applyOnce = (moveTasks) => {
+    const ok = change((p) => {
+      if (isOnce) {
+        const c = p.classes.find((x) => x.id === cid);
+        if (c) {
+          c.date = newDate;
+          c.s = newS;
+          c.e = newE;
+        }
+      } else {
+        p.exceptions = p.exceptions.filter((x) => !(x.cid === cid && x.date === origDate));
+        const ex = { id: uid(), cid, date: origDate };
+        let any = false;
+        if (newDate !== origDate) { ex.toDate = newDate; any = true; }
+        if (newS !== base.s) { ex.s = newS; any = true; }
+        if (newE !== base.e) { ex.e = newE; any = true; }
+        if (any) p.exceptions.push(ex);
+      }
+      if (moveTasks) {
+        for (const t of p.tasks) {
+          if (t.kind === "onsite" && t.cid === cid && (t.date === date || t.date === origDate) && !t.done) {
+            t.date = newDate;
+            t.due = newDate;
+            t.time = newS;
+          }
+        }
+      }
+    }, "Przeniesiono na " + dl(fromDK(newDate)) + ", " + fmtT(newS) + "–" + fmtT(newE));
+    if (ok) closeSheet();
+  };
+
+  const applyPerm = (moveTasks) => {
+    const newWd = wd(fromDK(newDate));
+    const ok = change((p) => {
+      const c = p.classes.find((x) => x.id === cid);
+      if (!c) return;
+      const wdChanged = c.wd !== newWd;
+      c.wd = newWd;
+      c.s = newS;
+      c.e = newE;
+      if (wdChanged) p.exceptions = p.exceptions.filter((x) => x.cid !== cid);
+      if (moveTasks) {
+        for (const t of p.tasks) {
+          if (t.kind === "onsite" && t.cid === cid && (t.date === date || t.date === origDate) && !t.done) {
+            t.date = newDate;
+            t.due = newDate;
+            t.time = newS;
+          }
+        }
+      }
+    }, "Zmieniono na stałe: " + DOW[newWd] + ", " + fmtT(newS) + "–" + fmtT(newE));
+    if (ok) closeSheet();
+  };
+
+  /* Zajęcia jednorazowe bez zadań: zapis od razu z toastem Cofnij */
+  if (isOnce && !tasks.length) {
+    applyOnce(false);
+    return;
+  }
+
+  const targetD = fromDK(newDate);
+  const sub =
+    esc(dlong(targetD)) + " · " + esc(fmtT(newS)) + "–" + esc(fmtT(newE));
+  const taskChk = tasks.length
+    ? '<label class="chkrow"><input type="checkbox" id="drgMoveTasks"><span>Przenieś też terminy zadań z tych zajęć (' +
+      tasks.length +
+      ")</span></label>"
+    : "";
+
+  const btns = isOnce
+    ? '<button type="button" class="btn pri blk" id="drgOnce">Zapisz zmianę</button>'
+    : '<button type="button" class="btn pri blk" id="drgOnce">Tylko ten raz (' +
+      esc(dl(targetD)) +
+      ')</button><button type="button" class="btn blk" id="drgPerm">Na stałe w całym planie (' +
+      esc(DOW[wd(targetD)]) +
+      ", " +
+      esc(fmtT(newS)) +
+      "–" +
+      esc(fmtT(newE)) +
+      ")</button>";
+
+  openSheet(
+    base.name,
+    '<p class="shsub">Nowy termin: <b>' +
+      sub +
+      "</b></p>" +
+      taskChk +
+      btns +
+      '<button type="button" class="btn blk" data-sh="close">Anuluj</button>'
+  );
+
+  const getMv = () => {
+    const el = $("drgMoveTasks");
+    return !!(el && el.checked);
+  };
+  const bOnce = $("drgOnce");
+  if (bOnce) bOnce.onclick = () => applyOnce(getMv());
+  const bPerm = $("drgPerm");
+  if (bPerm) bPerm.onclick = () => applyPerm(getMv());
+}
+
+function clearHoverNav() {
+  if (!active) return;
+  if (active.hoverTimer) {
+    clearTimeout(active.hoverTimer);
+    active.hoverTimer = 0;
+  }
+  if (active.hoverBtn) {
+    active.hoverBtn.classList.remove("drag-nav-hover");
+    active.hoverBtn = null;
+  }
+}
+
+function markWeekButtons(on) {
+  document.querySelectorAll('#list [data-a="wk:-1"], #list [data-a="wk:1"]').forEach((b) => {
+    b.classList.toggle("drag-nav-ready", on);
+    if (!on) b.classList.remove("drag-nav-hover");
+  });
+}
+
+function cleanup() {
+  if (!active) return;
+  clearHoverNav();
+  markWeekButtons(false);
+  if (active.ghost) active.ghost.remove();
+  if (active.dropEl) active.dropEl.remove();
+  if (active.hintEl) active.hintEl.remove();
+  if (active.srcEl) active.srcEl.classList.remove("drag-src", "drag-resizing");
+  document.body.classList.remove("dragging", "resizing");
+  active = null;
+}
+
+function createDropEl() {
+  const el = document.createElement("div");
+  el.className = "wb-drop";
+  el.innerHTML = "<b></b><span></span>";
+  return el;
+}
+
+function updateDesktopMove(clientX, clientY) {
+  if (!active) return;
+  const g = active.ghost;
+  g.style.left = clientX - active.offX + "px";
+  g.style.top = clientY - active.offY + "px";
+
+  /* Sprawdź najechanie kursorem na strzałki zmiany tygodnia ‹ / › (z marginesem 14 px) */
+  const navBtns = [...document.querySelectorAll('#list [data-a="wk:-1"], #list [data-a="wk:1"]')];
+  let hitBtn = null;
+  for (const b of navBtns) {
+    const r = b.getBoundingClientRect();
+    if (clientX >= r.left - 14 && clientX <= r.right + 14 && clientY >= r.top - 14 && clientY <= r.bottom + 14) {
+      hitBtn = b;
+      break;
+    }
+  }
+  if (hitBtn !== active.hoverBtn) {
+    clearHoverNav();
+    if (hitBtn) {
+      active.hoverBtn = hitBtn;
+      void hitBtn.offsetWidth;
+      hitBtn.classList.add("drag-nav-hover");
+      const dir = hitBtn.dataset.a === "wk:-1" ? -1 : 1;
+      const fire = () => {
+        if (!active || active.hoverBtn !== hitBtn) return;
+        shiftWeek(dir);
+        markWeekButtons(true);
+        /* Po render() przycisk w DOM jest nowy — znajdź go i podtrzymaj cykl przy dalszym trzymaniu */
+        const freshBtn = document.querySelector('#list [data-a="wk:' + dir + '"]');
+        active.hoverBtn = freshBtn;
+        if (freshBtn) {
+          void freshBtn.offsetWidth;
+          freshBtn.classList.add("drag-nav-hover");
+          active.hoverTimer = setTimeout(fire, HOVER_DELAY + 100);
+        }
+      };
+      active.hoverTimer = setTimeout(fire, HOVER_DELAY);
+    }
+  }
+
+  /* Znajdź kolumnę dnia pod kursorem */
+  const cols = [...document.querySelectorAll("#list .wg-c[data-date]")];
+  let col = null;
+  for (const c of cols) {
+    const r = c.getBoundingClientRect();
+    if (clientX >= r.left && clientX <= r.right) {
+      col = c;
+      break;
+    }
+  }
+  if (!col && cols.length) {
+    const firstR = cols[0].getBoundingClientRect();
+    col = clientX < firstR.left ? cols[0] : cols[cols.length - 1];
+  }
+  if (!col) return;
+
+  const r = col.getBoundingClientRect();
+  const lo = +col.dataset.lo;
+  const hi = +col.dataset.hi;
+  const relY = clientY - active.offY - r.top;
+  const rawS = lo + (relY / WG_H) * 60;
+  const dur = active.origE - active.origS;
+  const sMin = Math.max(MIN_M, Math.min(MAX_M - dur, snapMin(rawS)));
+  const eMin = sMin + dur;
+
+  active.newDate = col.dataset.date;
+  active.newS = toTime(sMin);
+  active.newE = toTime(eMin);
+
+  /* Podgląd zrzutu w kolumnie */
+  if (active.dropEl.parentElement !== col) col.appendChild(active.dropEl);
+  const top = ((sMin - lo) / 60) * WG_H + 1;
+  const h = Math.max(22, (dur / 60) * WG_H - 3);
+  active.dropEl.style.top = top + "px";
+  active.dropEl.style.height = h + "px";
+  active.dropEl.style.display = sMin >= lo - 60 && eMin <= hi + 60 ? "" : "none";
+  active.dropEl.querySelector("b").textContent = fmtT(active.newS) + "–" + fmtT(active.newE);
+  active.dropEl.querySelector("span").textContent = active.name;
+
+  /* Zaktualizuj godzinę i dzień na pływającym duchu */
+  const dObj = fromDK(active.newDate);
+  g.querySelector(".dg-time").textContent =
+    (dObj ? DOW[wd(dObj)].slice(0, 3) + " " + dObj.getDate() + " · " : "") + fmtT(active.newS) + "–" + fmtT(active.newE);
+}
+
+function updateDesktopResize(clientY) {
+  if (!active || !active.colEl) return;
+  const r = active.colEl.getBoundingClientRect();
+  const lo = +active.colEl.dataset.lo;
+  const relY = clientY - r.top;
+  const rawE = lo + (relY / WG_H) * 60;
+  const eMin = Math.max(active.origS + 30, Math.min(MAX_M, snapMin(rawE)));
+  active.newE = toTime(eMin);
+  const h = Math.max(22, ((eMin - active.origS) / 60) * WG_H - 3);
+  active.srcEl.style.height = h + "px";
+  const bEl = active.srcEl.querySelector(".wb-top b");
+  if (bEl) bEl.textContent = fmtT(active.newS) + "–" + fmtT(active.newE);
+}
+
+export function initDrag() {
+  const list = $("list");
+  if (!list) return;
+
+  list.addEventListener("pointerdown", (e) => {
+    if (!ui.editMode || !isDesk() || ui.shOpen || e.button !== 0) return;
+    const wb = e.target.closest(".wb[data-cid]");
+    if (!wb) return;
+    const isRz = !!e.target.closest(".wb-rz");
+    const rect = wb.getBoundingClientRect();
+    const colEl = wb.closest(".wg-c[data-date]");
+    const base = cache.plan.classes.find((c) => c.id === wb.dataset.cid);
+    if (!base) return;
+
+    active = {
+      mode: isRz ? "resize" : "move",
+      pointerId: e.pointerId,
+      cid: wb.dataset.cid,
+      name: base.name,
+      typeCls: wb.classList.contains("w") ? "w" : wb.classList.contains("l") ? "l" : wb.classList.contains("c2") ? "c2" : "x",
+      date: wb.dataset.date,
+      origDate: wb.dataset.orig || wb.dataset.date,
+      isOnce: wb.dataset.once === "1",
+      origS: +wb.dataset.s,
+      origE: +wb.dataset.e,
+      newDate: wb.dataset.date,
+      newS: toTime(+wb.dataset.s),
+      newE: toTime(+wb.dataset.e),
+      startX: e.clientX,
+      startY: e.clientY,
+      offX: e.clientX - rect.left,
+      offY: e.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+      srcEl: wb,
+      colEl,
+      started: false,
+      ghost: null,
+      dropEl: null,
+      hintEl: null,
+      hoverBtn: null,
+      hoverTimer: 0,
+    };
+  });
+
+  document.addEventListener("pointermove", (e) => {
+    if (!active || e.pointerId !== active.pointerId) return;
+    const dx = e.clientX - active.startX;
+    const dy = e.clientY - active.startY;
+    if (!active.started) {
+      if (Math.hypot(dx, dy) < 5) return;
+      active.started = true;
+      if (active.mode === "move") {
+        document.body.classList.add("dragging");
+        active.srcEl.classList.add("drag-src");
+        const g = document.createElement("div");
+        g.className = "drag-ghost " + active.typeCls;
+        g.style.width = Math.max(130, active.width) + "px";
+        g.style.height = Math.max(44, Math.min(active.height, 96)) + "px";
+        g.innerHTML = '<b class="dg-time"></b><span class="dg-name">' + esc(active.name) + "</span>";
+        document.body.appendChild(g);
+        active.ghost = g;
+        active.dropEl = createDropEl();
+
+        const hint = document.createElement("div");
+        hint.className = "drag-hint";
+        hint.textContent = "Upuść na wybraną godzinę · ← / → lub najedź na ‹ › aby zmienić tydzień · Esc anuluje";
+        document.body.appendChild(hint);
+        active.hintEl = hint;
+        markWeekButtons(true);
+      } else {
+        document.body.classList.add("resizing");
+        active.srcEl.classList.add("drag-resizing");
+      }
+    }
+    e.preventDefault();
+    if (active.mode === "move") updateDesktopMove(e.clientX, e.clientY);
+    else updateDesktopResize(e.clientY);
+  });
+
+  const finish = (cancelled) => {
+    if (!active) return;
+    const snap = active;
+    const wasStarted = snap.started;
+    cleanup();
+    if (!wasStarted) return;
+    suppressClickUntil = Date.now() + 350;
+    if (cancelled) {
+      app.render();
+      return;
+    }
+    const origSstr = toTime(snap.origS);
+    const origEstr = toTime(snap.origE);
+    if (snap.newDate === snap.date && snap.newS === origSstr && snap.newE === origEstr) {
+      app.render();
+      return;
+    }
+    commitDrop(snap);
+  };
+
+  document.addEventListener("pointerup", (e) => {
+    if (!active || e.pointerId !== active.pointerId) return;
+    finish(false);
+  });
+
+  document.addEventListener("pointercancel", (e) => {
+    if (!active || e.pointerId !== active.pointerId) return;
+    finish(true);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (!active || !active.started) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      finish(true);
+      return;
+    }
+    if (active.mode === "move" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      shiftWeek(e.key === "ArrowLeft" ? -1 : 1);
+      markWeekButtons(true);
+    }
+  }, true);
+}

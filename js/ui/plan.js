@@ -178,6 +178,14 @@ function weekGrid(mon, td, nm) {
             esc(x.id) +
             '" data-date="' +
             esc(x.date) +
+            '" data-orig="' +
+            esc(x.origDate || x.date) +
+            '" data-once="' +
+            (x.base.date ? "1" : "0") +
+            '" data-s="' +
+            o.s +
+            '" data-e="' +
+            o.e +
             '" title="' +
             esc(tip) +
             '" aria-label="' +
@@ -195,6 +203,7 @@ function weekGrid(mon, td, nm) {
             "</span>" +
             (c.room ? '<span class="wr">' + esc(c.room) + "</span>" : "") +
             (c.person && h >= 64 ? '<span class="wp">' + esc(c.person) + "</span>" : "") +
+            (ui.editMode ? '<span class="wb-rz" aria-hidden="true"></span>' : "") +
             "</div>"
           );
         })
@@ -206,6 +215,8 @@ function weekGrid(mon, td, nm) {
       return (
         '<div class="wg-c' +
         (st === "t" ? " td" : "") +
+        '" data-date="' +
+        dk(d) +
         '" data-lo="' +
         lo +
         '" data-hi="' +
