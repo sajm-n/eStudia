@@ -1,6 +1,8 @@
-title: Plan zajęć Inforkatyka Techniczna
+title: Plan zajęć Informatyka Techniczna
 theme: jekyll-theme-minimal
 exclude:
+  - package.json
   - scripts
+  - tests
   - push-state.json
   - push-subscriptions.json

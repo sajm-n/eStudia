@@ -1,12 +1,16 @@
 name: Powiadomienia o zadaniach
 
-# Pętla działająca ~6 godzin: co minutę sprawdza zadania z plan.json i wysyła powiadomienia push na zapisane urządzenia,
-# także gdy aplikacja jest zamknięta. Co godzinę GitHub zgłasza kolejny przebieg; czeka on w kolejce i startuje, gdy poprzedni się skończy
-# (stąd w zakładce Actions widać też „anulowane" przebiegi: to normalne, w kolejce mieści się tylko jeden).
+# Inteligentne powiadomienia Web Push:
+# - Uruchamia się co godzinę oraz natychmiast po zmianie plan.json.
+# - Jeśli w najbliższych 75 minutach nie ma zadań do powiadomienia, kończy się po ~5 sekundach.
+# - Stan wysyłki i subskrypcje urządzeń trzyma na osobnej gałęzi push-state (gałąź main pozostaje czysta).
 # Wymaga sekretu VAPID_PRIVATE_KEY (Settings → Secrets and variables → Actions).
 on:
   schedule:
     - cron: "5 * * * *"
+  push:
+    branches: [main]
+    paths: ["plan.json"]
   workflow_dispatch:
     inputs:
       test:
@@ -24,10 +28,11 @@ concurrency:
 jobs:
   send:
     runs-on: ubuntu-latest
-    timeout-minutes: 358
+    timeout-minutes: 85
     env:
       TZ: Europe/Warsaw
       BRANCH: ${{ github.ref_name }}
+      STATE_BRANCH: push-state
       VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +41,10 @@ jobs:
           TEST: ${{ inputs.test }}
         run: |
           if [ "${TEST:-false}" = "true" ]; then
-            node scripts/notify.mjs || true
+            STATE_DIR="/tmp/estudia-push-state"
+            rm -rf "$STATE_DIR"
+            git clone --depth=1 --branch "$STATE_BRANCH" "$(git remote get-url origin)" "$STATE_DIR" 2>/dev/null || mkdir -p "$STATE_DIR"
+            STATE_DIR="$STATE_DIR" node scripts/notify.mjs || true
           else
             bash scripts/loop.sh
           fi
