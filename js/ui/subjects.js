@@ -1,11 +1,11 @@
 /* ===== Katalog przedmiotów, wymagania, notatki i zgodność z MacBookiem ===== */
 
 import { TYPES, TYPE_ORDER, GROUPS, MAC_OPTS, MAC_TXT } from "../config.js";
-import { dk, mn, uid, isLate } from "../core.js";
+import { dk, mn, uid, isLate, taskGroup, isExamTask } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, reduced, nameLc, ui } from "../state.js";
 import { openSheet, change } from "./sheet.js";
-import { taskGroup, tkKey, taskMeta } from "./tasks.js";
+import { tkKey, taskMeta, catChip } from "./tasks.js";
 
 const FORM_LABEL = (t) => (t === "x" ? "Zajęcia" : t === "g" ? "Informacje" : TYPES[t]);
 const subjName = (sid) => {
@@ -209,6 +209,7 @@ function sjTaskRow(t) {
     '<div class="tk-row' +
     (t.done ? " done" : "") +
     (isLate(t) ? " late" : "") +
+    (isExamTask(t) ? " exam" : "") +
     '"><button type="button" class="tk-cb" role="checkbox" aria-checked="' +
     (t.done ? "true" : "false") +
     '" aria-label="Ukończone: ' +
@@ -220,6 +221,7 @@ function sjTaskRow(t) {
     '</i></button><button type="button" class="tk-body tkopen" data-sh="sto:' +
     esc(t.id) +
     '"><span class="tk-tx">' +
+    catChip(t) +
     esc(t.text) +
     '</span><span class="tk-meta">' +
     esc(cls) +

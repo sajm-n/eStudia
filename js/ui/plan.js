@@ -1,11 +1,11 @@
 /* ===== Widok planu zajęć: kalendarz, widok dnia, siatka tygodnia, linia postępu i edycja zajęć ===== */
 
 import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW, DOWS } from "../config.js";
-import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, endOf, overlaps, isLate } from "../core.js";
+import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, endOf, overlaps, isLate, taskGroup, isExamTask } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, K, reduced, isDesk, wk, pre, items, dl, dlong, t5, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, toast, change, playGo } from "./sheet.js";
-import { tasksOf, taskMeta, remHtml, remBind } from "./tasks.js";
+import { tasksOf, taskMeta, remHtml, remBind, catChip, catPickerHtml, bindCatPicker, taskLabelOf } from "./tasks.js";
 import { macOf, macChip } from "./subjects.js";
 
 const WG_H = 52;
@@ -120,6 +120,7 @@ function weekGrid(mon, td, nm) {
           const h = Math.max(22, ((o.e - o.s) / 60) * WG_H - 3);
           const sh = h < 42;
           const open = tasksOf(x.id, x.date).filter((t) => !t.done);
+          const hasExam = open.some(isExamTask);
           const aria =
             (ui.editMode ? "Edytuj: " : "Szczegóły i zadania: ") +
             c.name +
@@ -130,6 +131,7 @@ function weekGrid(mon, td, nm) {
             (c.room ? ", " + c.room : "") +
             (c.person ? ", " + c.person : "") +
             (x.off ? ", odwołane" : "") +
+            (hasExam ? ", kolokwium" : "") +
             (open.length ? ", nieukończone zadania: " + open.length : "");
           const tip =
             c.name + " · " + fmtT(c.s) + "–" + fmtT(c.e) + (c.room ? " · " + c.room : "") + (c.person ? " · " + c.person : "");
@@ -156,7 +158,7 @@ function weekGrid(mon, td, nm) {
             '" aria-label="' +
             esc(aria) +
             '">' +
-            (open.length ? '<i class="tkdot" aria-hidden="true"></i>' : "") +
+            (open.length ? '<i class="tkdot' + (hasExam ? " exam" : "") + '" aria-hidden="true"></i>' : "") +
             '<div class="wb-top"><b>' +
             esc(fmtT(c.s)) +
             "–" +
@@ -217,11 +219,14 @@ function card(it, cls, badge) {
   if (it.off) tags.push('<span class="ev warn">Odwołane</span>');
   else if (it.ex) tags.push('<span class="ev warn">Zmiana tego dnia</span>');
   const open = tasksOf(it.id, it.date).filter((t) => !t.done);
+  const hasExam = open.some(isExamTask);
+  if (hasExam) tags.push('<span class="ev exam"><i></i>Kolokwium</span>');
   if (open.length) tags.push('<span class="ev tk"><i></i>Do zrobienia: ' + open.length + "</span>");
   const act =
     ' role="button" tabindex="0" aria-label="' +
     (ui.editMode ? "Edytuj: " : "Szczegóły i zadania: ") +
     esc(c.name) +
+    (hasExam ? ", kolokwium" : "") +
     (open.length ? ", nieukończone zadania: " + open.length : "") +
     '"';
   const data = it.off ? "" : ' data-s="' + mn(c.s) + '" data-e="' + mn(c.e) + '"';
@@ -239,7 +244,7 @@ function card(it, cls, badge) {
     '"' +
     act +
     '><div class="tm">' +
-    (open.length ? '<i class="tkdot" aria-hidden="true"></i>' : "") +
+    (open.length ? '<i class="tkdot' + (hasExam ? " exam" : "") + '" aria-hidden="true"></i>' : "") +
     "<b>" +
     esc(fmtT(c.s)) +
     "</b><span>" +
@@ -331,10 +336,81 @@ function taskDots() {
   const t0 = dk(day0(new Date()));
   for (const t of cache.plan.tasks) {
     if (t.done || !t.due) continue;
-    const o = m[t.due] || (m[t.due] = { n: 0, late: t.due < t0 });
+    const o = m[t.due] || (m[t.due] = { n: 0, late: t.due < t0, exam: false });
     o.n++;
+    if (isExamTask(t)) o.exam = true;
   }
   return m;
+}
+
+/* Pasek podsumowania „Co przede mną” (najbliższe kolokwium, zaległe, najbliższe 7 dni) */
+function renderAhead() {
+  const box = $("ahead");
+  if (!box) return;
+  const td = day0(ui.now);
+  let over = 0;
+  let soon7 = 0;
+  let nextExam = null;
+  let nextExamDiff = Infinity;
+
+  for (const t of cache.plan.tasks) {
+    if (t.done) continue;
+    const g = taskGroup(t, ui.now);
+    if (g === "over") over++;
+    else if (g === "today" || g === "tomorrow" || g === "afterTomorrow" || g === "week") soon7++;
+    if (t.due && isExamTask(t)) {
+      const d = fromDK(t.due);
+      if (d) {
+        const diff = Math.round((d - td) / 864e5);
+        if (diff >= 0 && diff < nextExamDiff) {
+          nextExamDiff = diff;
+          nextExam = { t, diff, d };
+        }
+      }
+    }
+  }
+
+  const pills = [];
+  if (nextExam) {
+    const when =
+      nextExam.diff === 0
+        ? "dziś"
+        : nextExam.diff === 1
+        ? "jutro"
+        : nextExam.diff === 2
+        ? "pojutrze"
+        : "za " + nextExam.diff + " dni";
+    const sub = taskLabelOf(nextExam.t);
+    pills.push(
+      '<button type="button" class="ah exam" data-a="tk:' +
+        esc(nextExam.t.id) +
+        '"><i></i><span><b>Kolokwium:</b> ' +
+        esc(nextExam.t.text) +
+        (sub ? " (" + esc(sub) + ")" : "") +
+        " · " +
+        when +
+        "</span></button>"
+    );
+  }
+  if (over > 0) {
+    pills.push(
+      '<button type="button" class="ah over" data-a="goTasks:over"><i></i><span><b>Zaległe:</b> ' +
+        over +
+        "</span></button>"
+    );
+  }
+  if (soon7 > 0) {
+    const word = soon7 === 1 ? "zadanie" : soon7 >= 2 && soon7 <= 4 ? "zadania" : "zadań";
+    pills.push(
+      '<button type="button" class="ah" data-a="goTasks:all"><i></i><span><b>Najbliższe 7 dni:</b> ' +
+        soon7 +
+        " " +
+        word +
+        "</span></button>"
+    );
+  }
+  box.hidden = !pills.length;
+  box.innerHTML = pills.join("");
 }
 
 export function posMcal() {
@@ -355,6 +431,7 @@ export function renderPlan() {
   const td = day0(ui.now);
   const live = (d) => same(d, td) && !pre(d);
   $("sub").textContent = dlong(ui.now);
+  renderAhead();
 
   const y = ui.mo.getFullYear();
   const m = ui.mo.getMonth();
@@ -381,7 +458,7 @@ export function renderPlan() {
         same(d, td) ? "td" : "",
         same(d, ui.sel) ? "on" : "",
         !pre(d) && items(d).some((x) => !x.off) ? "hs" : "",
-        dt ? (dt.late ? "tk late" : "tk") : "",
+        dt ? (dt.late ? "tk late" : dt.exam ? "tk exam" : "tk") : "",
         inSel ? "wkr" : "",
         c === 0 ? "w0" : "",
         c === 6 ? "w6" : "",
@@ -397,7 +474,7 @@ export function renderPlan() {
         d.getDate() +
         '" aria-label="' +
         esc(dlong(d)) +
-        (dt ? ", zadań do zrobienia: " + dt.n + (dt.late ? " (po terminie)" : "") : "") +
+        (dt ? ", zadań do zrobienia: " + dt.n + (dt.exam ? " (kolokwium)" : "") + (dt.late ? " (po terminie)" : "") : "") +
         '">' +
         d.getDate() +
         "</button>";
@@ -435,7 +512,8 @@ export function renderPlan() {
 
   if (deskM) {
     $("mini").innerHTML =
-      h + '<p class="mleg"><span><i></i>zadania do zrobienia</span><span><i class="late"></i>po terminie</span></p>';
+      h +
+      '<p class="mleg"><span><i></i>zadania</span><span><i class="exam"></i>kolokwium</span><span><i class="late"></i>po terminie</span></p>';
     $("mini").hidden = !ui.mcalOpen;
     $("cal").innerHTML = "";
   } else {
@@ -605,6 +683,7 @@ export function openDetail(cid, date, focus) {
         '<div class="tk-row' +
         (t.done ? " done" : "") +
         (isLate(t) ? " late" : "") +
+        (isExamTask(t) ? " exam" : "") +
         '"><button type="button" class="tk-cb" role="checkbox" aria-checked="' +
         (t.done ? "true" : "false") +
         '" aria-label="Ukończone: ' +
@@ -618,6 +697,7 @@ export function openDetail(cid, date, focus) {
         '" data-sh="oe:' +
         esc(t.id) +
         '"><span class="tk-tx">' +
+        catChip(t) +
         esc(t.text) +
         '</span><span class="tk-meta">' +
         esc(taskMeta(t)) +
@@ -642,6 +722,7 @@ export function openDetail(cid, date, focus) {
       '<h3 class="sec">Zadania</h3>' +
       (list.length ? '<div class="tk-list">' + rows + "</div>" : '<p class="tk-empty">Brak zadań.</p>') +
       '<form id="tf" novalidate autocomplete="off"><label class="fl">Nowe zadanie<input name="text" maxlength="300" placeholder="np. Zadania 1-5 str. 40"></label>' +
+      catPickerHtml("task") +
       '<p class="hint">Termin: ' +
       esc(d.toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" })) +
       ", " +
@@ -654,6 +735,7 @@ export function openDetail(cid, date, focus) {
   );
   const f = $("tf");
   const rb = remBind(f, "onsite", () => endOf(dk(d), c.s), true);
+  bindCatPicker(f);
   f.onsubmit = (ev) => {
     ev.preventDefault();
     const text = f.elements.text.value.trim();
@@ -668,6 +750,7 @@ export function openDetail(cid, date, focus) {
       if (r.el) r.el.focus();
       return;
     }
+    const cat = f.elements.cat ? f.elements.cat.value : "task";
     const ok = change((p) => {
       const t = {
         id: uid(),
@@ -683,6 +766,7 @@ export function openDetail(cid, date, focus) {
         note: "",
         done: false,
       };
+      if (cat && cat !== "task") t.cat = cat;
       if (r.rem) t.rem = r.rem;
       p.tasks.push(t);
     });

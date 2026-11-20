@@ -1,6 +1,6 @@
 /* ===== Stałe i konfiguracja aplikacji eStudia ===== */
 
-export const APP_VERSION = "2.1.1";
+export const APP_VERSION = "2.2";
 
 export const TYPES = { w: "Wykład", l: "Laboratorium", c: "Ćwiczenia", x: "Inne" };
 export const TYPE_ORDER = "wlcx";
@@ -17,6 +17,19 @@ export const REC_PAIRS = [
   ["once", "Jednorazowo (konkretna data)"],
 ];
 
+export const TASK_TYPES = {
+  task: "Zadanie",
+  exam: "Kolokwium",
+  report: "Sprawozdanie",
+  project: "Projekt",
+};
+export const TASK_TYPE_PAIRS = [
+  ["task", "Zadanie"],
+  ["exam", "Kolokwium"],
+  ["report", "Sprawozdanie"],
+  ["project", "Projekt"],
+];
+
 export const DOW = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"];
 export const DOWS = ["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"];
 export const WD_IN = ["w poniedziałek", "we wtorek", "w środę", "w czwartek", "w piątek", "w sobotę", "w niedzielę"];
@@ -26,7 +39,8 @@ export const GROUPS = [
   ["over", "Zaległe"],
   ["today", "Dzisiaj"],
   ["tomorrow", "Jutro"],
-  ["week", "W tym tygodniu"],
+  ["afterTomorrow", "Pojutrze"],
+  ["week", "Najbliższe 7 dni"],
   ["later", "Później"],
   ["done", "Zakończone"],
 ];

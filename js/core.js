@@ -2,7 +2,7 @@
    Czysty moduł ES bez zależności od DOM i localStorage — importowany zarówno przez przeglądarkę,
    jak i bezpośrednio przez scripts/notify.mjs oraz testy jednostkowe. */
 
-import { TYPES, NOTIF_DEF, REM_MAX_MIN, OVERDUE_MS } from "./config.js";
+import { TYPES, TASK_TYPES, NOTIF_DEF, REM_MAX_MIN, OVERDUE_MS } from "./config.js";
 
 export const pad = (n) => String(n).padStart(2, "0");
 export const day0 = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -117,6 +117,31 @@ export function isLate(t, now = new Date()) {
   if (t.done || !t.due) return false;
   const end = endOf(t.due, t.time || (t.kind === "online" ? "23:59" : "00:00"));
   return !!end && end < now;
+}
+
+/* Grupowanie zadań wg ruchomego horyzontu (bez ucinania na niedzieli) */
+export function taskGroup(t, now = new Date()) {
+  if (t.done) return "done";
+  if (!t.due) return "later";
+  const td = day0(now);
+  const d = fromDK(t.due);
+  if (!d) return "later";
+  const diff = Math.round((d - td) / 864e5);
+  if (diff < 0) return "over";
+  if (diff === 0) return "today";
+  if (diff === 1) return "tomorrow";
+  if (diff === 2) return "afterTomorrow";
+  if (diff <= 7) return "week";
+  return "later";
+}
+
+export const taskCat = (t) => (t && Object.prototype.hasOwnProperty.call(TASK_TYPES, t.cat) ? t.cat : "task");
+
+export function isExamTask(t) {
+  const c = taskCat(t);
+  if (c === "exam") return true;
+  if (c !== "task") return false;
+  return /\b(kolos\w*|kolokwi\w*|egzamin\w*)\b/i.test(String(t && t.text ? t.text : ""));
 }
 
 /* Walidacja i normalizacja planu (import, odpowiedź z GitHuba, każdy zapis) */
@@ -278,6 +303,9 @@ export function validatePlan(raw) {
     }
     const rem = normRule(x.rem, true);
     if (rem) t.rem = rem; /* własny termin powiadomienia; brak = reguła domyślna z ustawień */
+    if (typeof x.cat === "string" && x.cat !== "task" && Object.prototype.hasOwnProperty.call(TASK_TYPES, x.cat)) {
+      t.cat = x.cat;
+    }
     tasks.push(t);
   }
 

@@ -426,3 +426,63 @@ body.go .cg button.on{animation:daypop .4s cubic-bezier(.34,1.56,.5,1)}
 @media (min-width:900px) and (orientation:landscape) and (prefers-reduced-motion:reduce){
   .wb,.mini:not([hidden]){transition:none;animation:none}
 }
+
+/* ===== v2.2: Typy zadań, filtry zadań i pasek „Co przede mną” ===== */
+:root{--exam:#7c3aed;--report:#0369a1;--proj:#b45309}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--exam:#c4b5fd;--report:#7dd3fc;--proj:#fcd34d}}
+:root[data-theme="dark"]{--exam:#c4b5fd;--report:#7dd3fc;--proj:#fcd34d}
+
+.tcat{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;margin-right:6px;vertical-align:1px;border:1px solid var(--bd);color:var(--mut)}
+.tcat.exam{color:var(--exam);border-color:var(--exam);background:color-mix(in srgb,var(--exam) 12%,transparent)}
+.tcat.report{color:var(--report);border-color:var(--report);background:color-mix(in srgb,var(--report) 12%,transparent)}
+.tcat.project{color:var(--proj);border-color:var(--proj);background:color-mix(in srgb,var(--proj) 12%,transparent)}
+.tk-row.exam{border-color:color-mix(in srgb,var(--exam) 55%,var(--bd))}
+.tk-row.exam:not(.done) .tk-tx{font-weight:700}
+
+.ev.exam{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:var(--exam);border-color:var(--exam);background:color-mix(in srgb,var(--exam) 10%,transparent)}
+.ev.exam i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.tkdot.exam{background:var(--exam)}
+.mini .cg button.tk.exam::after{background:var(--exam)}
+.mleg i.exam{background:var(--exam)}
+
+/* Pasek filtrów i wyszukiwania w zakładce Zadania */
+.tkfilt{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 12px}
+.tkfilt input[type="search"]{grid-column:1/-1;width:100%;box-sizing:border-box;min-height:40px;padding:7px 12px;font:inherit;font-size:15px;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:10px;-webkit-appearance:none;appearance:none}
+.tkfilt select{width:100%;min-width:0;box-sizing:border-box;min-height:40px;padding:7px 28px 7px 10px;font:inherit;font-size:14px;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:10px;-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),linear-gradient(135deg,var(--mut) 50%,transparent 50%);background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.tkfilt input:focus-visible,.tkfilt select:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+@media (min-width:900px) and (orientation:landscape){
+  .tkfilt{grid-template-columns:minmax(220px,1.4fr) minmax(180px,1fr) minmax(150px,.8fr);max-width:780px}
+  .tkfilt input[type="search"]{grid-column:auto}
+}
+
+/* Wybór typu zadania w formularzach */
+.tcats{margin:0 0 10px}
+.tcats button{min-height:36px;padding:0 11px;font-size:13px}
+.tcats button.on[data-tcat="exam"]{background:var(--exam);border-color:var(--exam);color:#fff}
+.tcats button.on[data-tcat="report"]{background:var(--report);border-color:var(--report);color:#fff}
+.tcats button.on[data-tcat="project"]{background:var(--proj);border-color:var(--proj);color:#fff}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .tcats button.on[data-tcat="exam"],
+  :root:not([data-theme="light"]) .tcats button.on[data-tcat="report"],
+  :root:not([data-theme="light"]) .tcats button.on[data-tcat="project"]{color:#10151f}
+}
+:root[data-theme="dark"] .tcats button.on[data-tcat="exam"],
+:root[data-theme="dark"] .tcats button.on[data-tcat="report"],
+:root[data-theme="dark"] .tcats button.on[data-tcat="project"]{color:#10151f}
+
+/* Pasek podsumowania „Co przede mną” */
+.ahead{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.ahead[hidden]{display:none}
+.ah{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font-size:13px;font-weight:600;text-align:left;max-width:100%;transition:border-color .2s,transform .14s ease}
+.ah:hover{border-color:var(--ac)}
+.ah:active{transform:scale(.97)}
+.ah i{width:8px;height:8px;border-radius:50%;background:var(--ac);flex:none}
+.ah span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ah b{font-weight:800}
+.ah.exam{border-color:color-mix(in srgb,var(--exam) 60%,var(--bd));background:color-mix(in srgb,var(--exam) 8%,var(--card))}
+.ah.exam i{background:var(--exam)}
+.ah.exam b{color:var(--exam)}
+.ah.over{border-color:color-mix(in srgb,var(--bad) 60%,var(--bd));background:color-mix(in srgb,var(--bad) 8%,var(--card))}
+.ah.over i{background:var(--bad)}
+.ah.over b{color:var(--bad)}
+@media (prefers-reduced-motion:reduce){.ah{transition:none}.ah:active{transform:none}}

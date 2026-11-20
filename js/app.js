@@ -7,7 +7,7 @@ import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushSt
 import { $, isDesk, mqD, dl, lsSet, setMsg, ui, app } from "./state.js";
 import { closeSheet, toast, ask, resolveAsk, change, playGo, popCb } from "./ui/sheet.js";
 import { renderSubjects, openSubject, ensureSubject, flushSave } from "./ui/subjects.js";
-import { renderTasks, initOlForm, toggleOl, openTask, openOnsiteTask, osBack, toggleTask, openAlertTask } from "./ui/tasks.js";
+import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, openOnsiteTask, osBack, toggleTask, openAlertTask } from "./ui/tasks.js";
 import {
   renderPlan,
   updateProgress,
@@ -319,9 +319,9 @@ document.addEventListener("keydown", (e) => {
     } else if (k === "t" || k === "T") goToday();
   } else if (ui.tab === "tasks" && (k === "n" || k === "N")) {
     e.preventDefault();
-    if (ui.tkView !== "online") {
-      ui.tkView = "online";
-      lsSet(TV_KEY, "online");
+    if (ui.tkView === "onsite") {
+      ui.tkView = "all";
+      lsSet(TV_KEY, "all");
       render();
     }
     if (!ui.olOpen) toggleOl(true);
@@ -356,6 +356,15 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (k === "tab") { setTab(v); return; }
+  if (k === "goTasks") {
+    ui.tkView = "all";
+    ui.tkQuery = "";
+    ui.tkSubj = "";
+    ui.tkCat = "";
+    lsSet(TV_KEY, "all");
+    setTab("tasks");
+    return;
+  }
   if (k !== "cal") ui.lastFill = {};
   let toPlan = false;
   if (k === "s") {
@@ -385,7 +394,7 @@ document.addEventListener("click", (e) => {
     ui.mcalOpen = false;
   } else if (k === "edit") ui.editMode = !ui.editMode;
   else if (k === "tv") {
-    ui.tkView = v === "online" ? "online" : "onsite";
+    ui.tkView = v === "online" || v === "onsite" ? v : "all";
     lsSet(TV_KEY, ui.tkView);
   } else if (k === "ol") { toggleOl(!ui.olOpen); return; }
   else if (k === "hd") {
@@ -493,6 +502,7 @@ function handleDeepLink() {
 
 /* Inicjalizacja */
 initOlForm();
+initTaskFilters();
 render();
 handleDeepLink();
 

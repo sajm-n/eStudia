@@ -11,6 +11,9 @@ import {
   nextOccurrence,
   taskTrigger,
   taskAlert,
+  taskGroup,
+  taskCat,
+  isExamTask,
   isLate,
   fromDK,
   dk,
@@ -144,4 +147,39 @@ test("isLate: spójność z endOf dla zadań online i onsite", () => {
   assert.equal(isLate({ kind: "online", due: "2026-11-23", time: "", done: false }, now), false); // domyślnie 23:59
   assert.equal(normT("8:05"), "08:05");
   assert.equal(normT("25:00"), null);
+});
+
+test("taskGroup: ruchomy horyzont w niedzielę (poniedziałek=Jutro, wtorek=Pojutrze, śr-nd=Najbliższe 7 dni)", () => {
+  const sunday = new Date(2026, 10, 22, 18, 0); // niedziela 22.11.2026
+  assert.equal(taskGroup({ due: "2026-11-21", done: false }, sunday), "over");
+  assert.equal(taskGroup({ due: "2026-11-22", done: false }, sunday), "today");
+  assert.equal(taskGroup({ due: "2026-11-23", done: false }, sunday), "tomorrow");
+  assert.equal(taskGroup({ due: "2026-11-24", done: false }, sunday), "afterTomorrow");
+  assert.equal(taskGroup({ due: "2026-11-25", done: false }, sunday), "week");
+  assert.equal(taskGroup({ due: "2026-11-29", done: false }, sunday), "week");
+  assert.equal(taskGroup({ due: "2026-11-30", done: false }, sunday), "later");
+  assert.equal(taskGroup({ due: "2026-11-23", done: true }, sunday), "done");
+});
+
+test("taskCat, isExamTask i validatePlan: zachowanie kategorii zadań i wykrywanie kolokwiów", () => {
+  const raw = {
+    ...DEFAULT_PLAN,
+    tasks: [
+      { id: "t1", kind: "online", text: "Kolos z algebry", due: "2026-11-23", done: false },
+      { id: "t2", kind: "onsite", text: "Ćwiczenie 4", due: "2026-11-24", cat: "exam", done: false },
+      { id: "t3", kind: "onsite", text: "Lab 5", due: "2026-11-25", cat: "report", done: false },
+      { id: "t4", kind: "online", text: "Aplikacja", due: "2026-11-26", cat: "project", done: false },
+      { id: "t5", kind: "online", text: "Zwykłe", due: "2026-11-27", cat: "task", done: false },
+    ],
+  };
+  const v = validatePlan(raw);
+  assert.equal(v.ok, true);
+  assert.equal(taskCat(v.plan.tasks[0]), "task");
+  assert.equal(isExamTask(v.plan.tasks[0]), true); // wykryte po słowie „Kolos”
+  assert.equal(v.plan.tasks[1].cat, "exam");
+  assert.equal(isExamTask(v.plan.tasks[1]), true);
+  assert.equal(v.plan.tasks[2].cat, "report");
+  assert.equal(isExamTask(v.plan.tasks[2]), false);
+  assert.equal(v.plan.tasks[3].cat, "project");
+  assert.equal(v.plan.tasks[4].cat, undefined); // domyślne „task” nie zaśmieca JSON-a
 });

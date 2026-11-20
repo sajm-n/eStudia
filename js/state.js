@@ -45,12 +45,13 @@ export function setMsg(id, text, kind) {
 }
 
 let initialTab = "plan";
-let initialTkView = "onsite";
+let initialTkView = "all";
 let initialHideDone = false;
 try {
   const t = localStorage.getItem(TAB_KEY);
   if (TABS[t]) initialTab = t;
-  if (localStorage.getItem(TV_KEY) === "online") initialTkView = "online";
+  const tv = localStorage.getItem(TV_KEY);
+  if (tv === "all" || tv === "onsite" || tv === "online") initialTkView = tv;
   initialHideDone = localStorage.getItem(HD_KEY) === "1";
 } catch (e) {}
 
@@ -68,6 +69,9 @@ export const ui = {
   lastFill: {},
   editMode: false,
   tkView: initialTkView,
+  tkQuery: "",
+  tkSubj: "",
+  tkCat: "",
   hideDone: initialHideDone,
   olOpen: false,
   olAnim: null,
