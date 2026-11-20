@@ -455,14 +455,8 @@ document.addEventListener("click", (e) => {
   } else if (k === "m") ui.mo = new Date(ui.mo.getFullYear(), ui.mo.getMonth() + +v, 1);
   else if (k === "wk") { shiftWeek(+v); return; }
   else if (k === "cal") { toggleCal(); return; }
-  else if (k === "v") ui.vw = v;
   else if (k === "dy") { shiftDay(+v); return; }
-  else if (k === "dd") {
-    const p = v.split(",").map(Number);
-    ui.sel = new Date(p[0], p[1], p[2]);
-    ui.mo = new Date(p[0], p[1], 1);
-    ui.vw = "day";
-  } else if (k === "today") {
+  else if (k === "today") {
     ui.sel = day0(new Date());
     ui.mo = new Date(ui.sel.getFullYear(), ui.sel.getMonth(), 1);
     ui.mcalOpen = false;
@@ -488,7 +482,7 @@ document.addEventListener("click", (e) => {
   }
   render();
   if (toPlan) $("scroller").scrollTo(0, 0);
-  if (k === "s" || k === "v" || k === "dd" || k === "today" || k === "tv" || k === "hd") playGo();
+  if (k === "s" || k === "today" || k === "tv" || k === "hd") playGo();
 });
 
 /* Gest przesuwania tygodni na pasku kalendarza oraz dni na liście dnia (telefon) */
@@ -518,7 +512,7 @@ document.addEventListener("click", (e) => {
   let ly0 = 0;
   let lon = false;
   lst.addEventListener("touchstart", (e) => {
-    if (isDesk() || ui.vw !== "day" || ui.shOpen || e.touches.length !== 1) { lon = false; return; }
+    if (isDesk() || ui.shOpen || e.touches.length !== 1) { lon = false; return; }
     lx0 = e.touches[0].clientX;
     ly0 = e.touches[0].clientY;
     lon = true;
@@ -526,7 +520,7 @@ document.addEventListener("click", (e) => {
   lst.addEventListener("touchend", (e) => {
     if (!lon) return;
     lon = false;
-    if (isDesk() || ui.vw !== "day" || ui.shOpen) return;
+    if (isDesk() || ui.shOpen) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - lx0;
     const dy = t.clientY - ly0;

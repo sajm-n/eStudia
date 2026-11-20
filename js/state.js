@@ -62,7 +62,6 @@ export const ui = {
   now: startNow,
   sel: day0(startNow),
   mo: new Date(startNow.getFullYear(), startNow.getMonth(), 1),
-  vw: "day",
   calOpen: false,
   mcalOpen: false,
   mcalAnchor: "wk",

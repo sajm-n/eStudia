@@ -26,7 +26,7 @@ h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0}
 .chip.ok i{background:var(--ok)}.chip.warn i{background:var(--warn)}.chip.bad i{background:var(--bad)}
 .chip.busy i{animation:pulse 1s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.25}}
-.row{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.row{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-bottom:6px}
 .seg{display:flex;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:3px;gap:2px}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .seg button{padding:7px 14px;border-radius:8px;font-weight:600;font-size:14px;color:var(--mut)}

@@ -611,13 +611,6 @@ export function renderPlan() {
     $("mini").hidden = true;
   }
 
-  $("vw").innerHTML = [
-    ["day", "Dzień"],
-    ["week", "Cały tydzień"],
-  ]
-    .map((v) => '<button type="button" class="' + (ui.vw === v[0] ? "on" : "") + '" data-a="v:' + v[0] + '">' + v[1] + "</button>")
-    .join("");
-
   const start = fromDK(cache.plan.start);
   const note = pre(ui.sel)
     ? '<p class="sub" style="text-transform:none">Przed ' + esc(dl(start)) + " pokazuję podgląd planu z tygodnia " + wk(ui.sel) + ".</p>"
@@ -637,37 +630,27 @@ export function renderPlan() {
     "</h2>";
 
   let L;
-  if (!desk && ui.vw === "day") L = note + head(ui.sel, 1) + dayHtml(ui.sel, live(ui.sel));
-  else {
+  if (!desk) {
+    L = note + head(ui.sel, 1) + dayHtml(ui.sel, live(ui.sel));
+  } else {
     const mon = new Date(ui.sel.getFullYear(), ui.sel.getMonth(), ui.sel.getDate() - wd(ui.sel));
-    if (desk) {
-      const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
-      L =
-        note +
-        '<h2 class="hh wkh" style="align-items:center"><span class="hdn">' +
-        nb("wk:-1", "Poprzedni tydzień") +
-        '<button type="button" class="wkbtn" id="wkBtn" data-a="mcal:wk" aria-expanded="' +
-        (ui.mcalOpen && ui.mcalAnchor === "wk" ? "true" : "false") +
-        '" aria-haspopup="dialog" title="Pokaż kalendarz miesiąca"><span>Tydzień ' +
-        wk(ui.sel) +
-        " · " +
-        esc(dl(mon)) +
-        " – " +
-        esc(dl(sun)) +
-        '</span><i aria-hidden="true">▾</i></button>' +
-        nb("wk:1", "Następny tydzień") +
-        '</span><button type="button" class="today" data-a="today:">Dzisiaj</button></h2>' +
-        weekGrid(mon, td, ui.now.getHours() * 60 + ui.now.getMinutes());
-    } else {
-      L =
-        note +
-        '<h2 class="hh"><span>Tydzień ' +
-        wk(ui.sel) +
-        "</span></h2>" +
-        weekDays(mon)
-          .map((d) => head(d, 0) + dayHtml(d, live(d)))
-          .join("");
-    }
+    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+    L =
+      note +
+      '<h2 class="hh wkh" style="align-items:center"><span class="hdn">' +
+      nb("wk:-1", "Poprzedni tydzień") +
+      '<button type="button" class="wkbtn" id="wkBtn" data-a="mcal:wk" aria-expanded="' +
+      (ui.mcalOpen && ui.mcalAnchor === "wk" ? "true" : "false") +
+      '" aria-haspopup="dialog" title="Pokaż kalendarz miesiąca"><span>Tydzień ' +
+      wk(ui.sel) +
+      " · " +
+      esc(dl(mon)) +
+      " – " +
+      esc(dl(sun)) +
+      '</span><i aria-hidden="true">▾</i></button>' +
+      nb("wk:1", "Następny tydzień") +
+      '</span><button type="button" class="today" data-a="today:">Dzisiaj</button></h2>' +
+      weekGrid(mon, td, ui.now.getHours() * 60 + ui.now.getMinutes());
   }
   $("list").innerHTML = L;
   if (desk) $("sub").setAttribute("aria-expanded", ui.mcalOpen && ui.mcalAnchor === "sub" ? "true" : "false");
