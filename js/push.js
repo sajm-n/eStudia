@@ -2,10 +2,10 @@
    Urządzenie zapisuje swoją subskrypcję push w repozytorium (push-subscriptions.json na gałęzi push-state).
    Workflow GitHub Actions (.github/workflows/notify.yml) wysyła powiadomienia na zapisane urządzenia. */
 
-import { SEEN_KEY, VAPID_PUBLIC, PUSH_FILE, PUSH_BRANCH, PUSH_KEY, PUSHVAPID_KEY } from "./config.js";
+import { SEEN_KEY, VAPID_PUBLIC, PUSH_FILE, PUSH_STATE_FILE, PUSH_BRANCH, PUSH_KEY, PUSHVAPID_KEY } from "./config.js";
 import { day0, same, fromDK, fmtT, taskAlert, taskTrigger } from "./core.js";
 import { cfg, cache, ghFile, b64e, b64d } from "./sync.js";
-import { $, esc, dl, lsSet } from "./state.js";
+import { $, esc, dl, hm, lsSet } from "./state.js";
 
 const subjName = (sid) => {
   const s = cache.plan.subjects.find((x) => x.id === sid);
@@ -362,4 +362,51 @@ export function renderNotifState() {
         : "";
   }
   renderPushState();
+}
+
+/* Diagnostyka serwera powiadomień (odczyt push-state.json i push-subscriptions.json z gałęzi push-state) */
+export async function renderPushDiag() {
+  const el = $("pushDiag");
+  if (!el) return;
+  if (!cfg.token) {
+    el.textContent = "";
+    return;
+  }
+  el.textContent = "Sprawdzam status serwera powiadomień…";
+  el.className = "hint";
+  try {
+    const [stRes, subRes] = await Promise.all([
+      ghFile(PUSH_STATE_FILE, "GET", null, PUSH_BRANCH),
+      ghFile(PUSH_FILE, "GET", null, PUSH_BRANCH),
+    ]);
+    if (!$("pushDiag")) return;
+    let hbText = "brak danych";
+    let stale = false;
+    if (stRes.ok) {
+      const o = await stRes.json();
+      const st = JSON.parse(b64d(o.content || ""));
+      if (st && st.hb) {
+        const d = new Date(st.hb);
+        if (!Number.isNaN(d.getTime())) {
+          const td = day0(new Date());
+          const yest = new Date(td.getFullYear(), td.getMonth(), td.getDate() - 1);
+          const dayStr = same(d, td) ? "dziś" : same(d, yest) ? "wczoraj" : dl(d);
+          hbText = dayStr + " o " + fmtT(hm(d));
+          stale = Date.now() - d.getTime() > 90 * 60 * 1000;
+        }
+      }
+    }
+    let devCount = null;
+    if (subRes.ok) {
+      const o = await subRes.json();
+      const arr = JSON.parse(b64d(o.content || ""));
+      if (Array.isArray(arr)) devCount = arr.length;
+    }
+    const parts = ["Ostatnie sprawdzenie: " + hbText];
+    if (devCount !== null) parts.push("zapisanych urządzeń: " + devCount);
+    el.textContent = "Serwer powiadomień · " + parts.join(" · ");
+    el.className = stale ? "msg warn" : "hint";
+  } catch (e) {
+    if ($("pushDiag")) el.textContent = "";
+  }
 }

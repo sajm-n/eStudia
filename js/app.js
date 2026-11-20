@@ -4,13 +4,14 @@ import { APP_VERSION, TABS, TAB_KEY, TV_KEY, HD_KEY, NOTIF_DEF, DEFAULT_PLAN } f
 import { day0, same, dk, fromDK, clone, uid, serialize } from "./core.js";
 import { cache, conflict, hooks, commit, syncAll, resolveConflict, clearTokenState } from "./sync.js";
 import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushState } from "./push.js";
-import { $, isDesk, mqD, dl, lsSet, setMsg, ui, app } from "./state.js";
+import { $, isDesk, mqD, dl, lsSet, setMsg, getTheme, applyTheme, ui, app } from "./state.js";
 import { closeSheet, toast, ask, resolveAsk, change, playGo, popCb } from "./ui/sheet.js";
 import { renderSubjects, openSubject, ensureSubject, flushSave } from "./ui/subjects.js";
 import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, openOnsiteTask, osBack, toggleTask, openAlertTask } from "./ui/tasks.js";
 import {
   renderPlan,
   updateProgress,
+  tickClock,
   posMcal,
   openDetail,
   rerenderDetail,
@@ -89,7 +90,17 @@ function shAction(a) {
     const k = a.slice(0, ci);
     const id = a.slice(ci + 1);
     if (k === "stab") openSubject(ui.ctx.sname, id);
-    else if (k === "mac") {
+    else if (k === "theme") {
+      const v = applyTheme(id);
+      const seg = $("themeSeg");
+      if (seg) {
+        seg.querySelectorAll("button").forEach((b) => {
+          const on = b.dataset.sh === "theme:" + v;
+          b.classList.toggle("on", on);
+          b.setAttribute("aria-pressed", on);
+        });
+      }
+    } else if (k === "mac") {
       const nm = ui.ctx.sname;
       const tb = ui.ctx.stab;
       flushSave();
@@ -417,8 +428,8 @@ document.addEventListener("click", (e) => {
   if (k === "s" || k === "v" || k === "dd" || k === "today" || k === "tv" || k === "hd") playGo();
 });
 
-/* Gest przesuwania tygodni na pasku kalendarza (telefon) */
-(function initCalSwipe() {
+/* Gest przesuwania tygodni na pasku kalendarza oraz dni na liście dnia (telefon) */
+(function initSwipes() {
   const c = $("cal");
   let x0 = 0;
   let y0 = 0;
@@ -438,6 +449,27 @@ document.addEventListener("click", (e) => {
     if (Math.abs(dx) > 45 && Math.abs(dx) > 1.5 * Math.abs(dy)) shiftWeek(dx < 0 ? 1 : -1);
   }, { passive: true });
   c.addEventListener("touchcancel", () => { on = false; }, { passive: true });
+
+  const lst = $("list");
+  let lx0 = 0;
+  let ly0 = 0;
+  let lon = false;
+  lst.addEventListener("touchstart", (e) => {
+    if (isDesk() || ui.vw !== "day" || ui.shOpen || e.touches.length !== 1) { lon = false; return; }
+    lx0 = e.touches[0].clientX;
+    ly0 = e.touches[0].clientY;
+    lon = true;
+  }, { passive: true });
+  lst.addEventListener("touchend", (e) => {
+    if (!lon) return;
+    lon = false;
+    if (isDesk() || ui.vw !== "day" || ui.shOpen) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - lx0;
+    const dy = t.clientY - ly0;
+    if (Math.abs(dx) > 55 && Math.abs(dx) > 1.8 * Math.abs(dy)) shiftDay(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  lst.addEventListener("touchcancel", () => { lon = false; }, { passive: true });
 })();
 
 /* Hooki synchronizacji */
@@ -501,6 +533,7 @@ function handleDeepLink() {
 }
 
 /* Inicjalizacja */
+applyTheme(getTheme());
 initOlForm();
 initTaskFilters();
 render();
@@ -527,12 +560,21 @@ function fresh() {
   }
   render();
 }
+function tick() {
+  const t = day0(new Date());
+  if (!same(t, seen)) {
+    fresh();
+    return;
+  }
+  tickClock();
+  renderAlerts();
+}
 function trySync() {
   lastSync = Date.now();
   syncAll();
 }
 
-setInterval(fresh, 60000);
+setInterval(tick, 60000);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
   fresh();

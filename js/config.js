@@ -1,6 +1,6 @@
 /* ===== Stałe i konfiguracja aplikacji eStudia ===== */
 
-export const APP_VERSION = "2.2";
+export const APP_VERSION = "2.3";
 
 export const TYPES = { w: "Wykład", l: "Laboratorium", c: "Ćwiczenia", x: "Inne" };
 export const TYPE_ORDER = "wlcx";
@@ -57,6 +57,7 @@ export const HD_KEY = "estudia.hidedone.v1";
 export const SEEN_KEY = "estudia.notified.v1";
 export const PUSH_KEY = "estudia.pushsub.v1";
 export const PUSHVAPID_KEY = "estudia.pushvapid.v1";
+export const THEME_KEY = "estudia.theme.v1";
 
 /* Domyślna konfiguracja synchronizacji z GitHubem */
 export const CFG_DEF = {
@@ -70,6 +71,7 @@ export const CFG_DEF = {
 /* Powiadomienia Web Push (subskrypcje i stan zapisywane są na osobnej gałęzi technicznej) */
 export const VAPID_PUBLIC = "BDi4iXQXPrUX2rtlRytZfam2Hs4DjZMsPHG5cUIBUNM0mpyqsOroYBtUWJZnyqeH6m1BEepygv_ZC0Fx9_6PqFY";
 export const PUSH_FILE = "push-subscriptions.json";
+export const PUSH_STATE_FILE = "push-state.json";
 export const PUSH_BRANCH = "push-state";
 
 /* Domyślne reguły powiadomień */

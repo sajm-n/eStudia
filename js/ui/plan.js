@@ -112,8 +112,20 @@ function weekGrid(mon, td, nm) {
               if (nm >= mn(c.e)) cls = " past";
               else if (nm >= mn(c.s)) {
                 cls = " now";
-                b = '<span class="wst">Teraz</span>';
-              } else if (x === nxItem) b = '<span class="wst nx">Następne</span>';
+                b =
+                  '<span class="wst" data-cd="now" data-compact="1" data-to="' +
+                  mn(c.e) +
+                  '">' +
+                  liveBadgeText("now", mn(c.e) - nm, true) +
+                  "</span>";
+              } else if (x === nxItem) {
+                b =
+                  '<span class="wst nx" data-cd="nx" data-compact="1" data-to="' +
+                  mn(c.s) +
+                  '">' +
+                  liveBadgeText("nx", mn(c.s) - nm, true) +
+                  "</span>";
+              }
             } else if (st === "p" && !pre(d)) cls = " past";
           }
           const top = ((o.s - lo) / 60) * WG_H + 1;
@@ -285,6 +297,63 @@ function gap(a, b) {
   );
 }
 
+function fmtLeft(mins) {
+  if (mins <= 0) return "< 1 min";
+  const h = Math.floor(mins / 60);
+  const r = mins % 60;
+  return h ? (r ? h + " h " + r + " min" : h + " h") : r + " min";
+}
+
+function liveBadgeText(kind, diffMin, compact) {
+  if (kind === "now") {
+    return compact ? "Teraz · " + fmtLeft(diffMin) : "Teraz · koniec za " + fmtLeft(diffMin);
+  }
+  if (compact) return diffMin <= 180 ? "za " + fmtLeft(diffMin) : "Następne";
+  return "Następne · za " + fmtLeft(diffMin);
+}
+
+let lastLiveSig = "";
+
+function computeLiveSig(now) {
+  const td = day0(now);
+  if (pre(td)) return "pre";
+  const nm = now.getHours() * 60 + now.getMinutes();
+  const act = items(td).filter((x) => !x.off);
+  const nx = act.find((x) => mn(x.c.s) > nm);
+  return (
+    dk(td) +
+    "|" +
+    act
+      .map((x) => {
+        const s = mn(x.c.s);
+        const e = mn(x.c.e);
+        const st = nm >= e ? "p" : nm >= s ? "n" : x === nx ? "x" : "f";
+        return x.id + ":" + st;
+      })
+      .join(",")
+  );
+}
+
+/* Lekkie odświeżanie co minutę: aktualizuje liczniki i linię czasu bez przebudowy całego DOM */
+export function tickClock() {
+  ui.now = new Date();
+  const sig = computeLiveSig(ui.now);
+  if (sig !== lastLiveSig) {
+    lastLiveSig = sig;
+    renderPlan();
+    updateProgress();
+    return true;
+  }
+  const nm = ui.now.getHours() * 60 + ui.now.getMinutes();
+  document.querySelectorAll("#list [data-cd]").forEach((el) => {
+    const to = +el.dataset.to;
+    const compact = el.dataset.compact === "1";
+    el.textContent = liveBadgeText(el.dataset.cd, to - nm, compact);
+  });
+  updateProgress();
+  return false;
+}
+
 function dayHtml(d, live) {
   const it = items(d);
   if (!it.length) {
@@ -307,9 +376,21 @@ function dayHtml(d, live) {
         if (live) {
           if (nm >= mn(x.c.s) && nm < mn(x.c.e)) {
             cls = "now";
-            b = '<span class="st">Teraz</span>';
+            b =
+              '<span class="st" data-cd="now" data-to="' +
+              mn(x.c.e) +
+              '">' +
+              liveBadgeText("now", mn(x.c.e) - nm, false) +
+              "</span>";
           } else if (nm >= mn(x.c.e)) cls = "past";
-          else if (x === nxItem) b = '<span class="st nx">Następne</span>';
+          else if (x === nxItem) {
+            b =
+              '<span class="st nx" data-cd="nx" data-to="' +
+              mn(x.c.s) +
+              '">' +
+              liveBadgeText("nx", mn(x.c.s) - nm, false) +
+              "</span>";
+          }
         } else if (st === "p" && !pre(d)) cls = "past";
       }
       return g + card(x, cls, b);
@@ -429,6 +510,7 @@ export function posMcal() {
 
 export function renderPlan() {
   const td = day0(ui.now);
+  lastLiveSig = computeLiveSig(ui.now);
   const live = (d) => same(d, td) && !pre(d);
   $("sub").textContent = dlong(ui.now);
   renderAhead();
