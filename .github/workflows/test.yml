@@ -19,3 +19,5 @@ jobs:
           node-version: 22
       - name: Testy jednostkowe
         run: node --test tests/*.test.mjs
+      - name: Test dymny UI (Chromium)
+        run: node tests/smoke.mjs
