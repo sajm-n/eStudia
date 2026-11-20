@@ -325,5 +325,12 @@ test("v2.6: niezależne zadania, dopasowanie czasowe do zajęć, kolokwium/spraw
   assert.ok(nextMath);
   assert.equal(nextMath.dk, "2026-11-24");
   assert.equal(nextMath.s, "11:30");
+
+  // Przełożenie z laboratorium Podstawy programowania (pon 23.11) musi znaleźć kolejne laboratorium (pon 30.11), a nie wykład (wt 24.11)
+  const nextLab = nextOccurrenceBySubject(p, "Podstawy programowania", new Date(2026, 10, 24, 0, 0), { cid: "c01", type: "l" });
+  assert.ok(nextLab);
+  assert.equal(nextLab.cid, "c01");
+  assert.equal(nextLab.dk, "2026-11-30");
+  assert.equal(nextLab.s, "08:00");
 });
 

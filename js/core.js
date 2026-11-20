@@ -614,23 +614,38 @@ export function nextOccurrence(plan, cid, after) {
   return null;
 }
 
-/* Najbliższe (od podanego dnia włącznie) nieodwołane zajęcia danego przedmiotu: {date, dk, s, e, cid} albo null */
-export function nextOccurrenceBySubject(plan, subjectName, fromDate = new Date()) {
+/* Najbliższe (od podanego dnia włącznie) nieodwołane zajęcia danego przedmiotu: {date, dk, s, e, cid} albo null.
+   Opcjonalnie zawęża szukanie do tego samego typu zajęć (np. laboratorium → kolejne laboratorium, nie wykład). */
+export function nextOccurrenceBySubject(plan, subjectName, fromDate = new Date(), opts = {}) {
   const target = String(subjectName || "").trim().toLowerCase();
   if (!target || !plan || !Array.isArray(plan.classes)) return null;
+  const wantType = opts && opts.type ? opts.type : "";
+  const wantCid = opts && opts.cid ? opts.cid : "";
   const startDay = day0(fromDate);
   const nowMin = fromDate.getHours() * 60 + fromDate.getMinutes();
-  for (let i = 0; i <= 190; i++) {
-    const d = new Date(startDay.getFullYear(), startDay.getMonth(), startDay.getDate() + i);
-    const list = itemsFor(plan, d);
-    for (const it of list) {
-      if (it.off) continue;
-      if (String(it.c.name || "").trim().toLowerCase() !== target) continue;
-      if (i === 0 && mn(it.c.e) <= nowMin) continue;
-      return { date: d, dk: dk(d), s: it.c.s, e: it.c.e, cid: it.id };
+  const findWith = (pred) => {
+    for (let i = 0; i <= 190; i++) {
+      const d = new Date(startDay.getFullYear(), startDay.getMonth(), startDay.getDate() + i);
+      const list = itemsFor(plan, d);
+      for (const it of list) {
+        if (it.off) continue;
+        if (String(it.c.name || "").trim().toLowerCase() !== target) continue;
+        if (pred && !pred(it)) continue;
+        if (i === 0 && mn(it.c.e) <= nowMin) continue;
+        return { date: d, dk: dk(d), s: it.c.s, e: it.c.e, cid: it.id, type: it.c.type };
+      }
     }
+    return null;
+  };
+  if (wantCid) {
+    const exact = findWith((it) => it.id === wantCid);
+    if (exact) return exact;
   }
-  return null;
+  if (wantType) {
+    const byType = findWith((it) => it.c.type === wantType);
+    if (byType) return byType;
+  }
+  return findWith(null);
 }
 
 /* Sprawdza, czy niezależne zadanie przypada w czasie trwania konkretnych zajęć */

@@ -640,14 +640,22 @@ export function bindTaskForm(form, isNew) {
     if (!nextBtn || !E.subj) return;
     const sname = subjNameFromVal(E.subj.value);
     let from = new Date();
+    let opts = {};
     if (!isNew && E.due && E.due.value) {
       const curDue = fromDK(E.due.value);
       const td = day0(new Date());
       if (curDue && curDue >= td) {
         from = new Date(curDue.getFullYear(), curDue.getMonth(), curDue.getDate() + 1, 0, 0);
       }
+      if (E.time && E.time.value.trim()) {
+        const sid = E.subj.value && !E.subj.value.startsWith("n:") ? E.subj.value : "";
+        const curCls = classForTask(cache.plan, { due: E.due.value, time: E.time.value.trim(), sid });
+        if (curCls && curCls.c && nameLc(curCls.c.name) === nameLc(sname)) {
+          opts = { cid: curCls.id, type: curCls.c.type };
+        }
+      }
     }
-    nextOcc = sname ? nextOccurrenceBySubject(cache.plan, sname, from) : null;
+    nextOcc = sname ? nextOccurrenceBySubject(cache.plan, sname, from, opts) : null;
     if (nextOcc) {
       const wdTxt = nextOcc.date.toLocaleDateString("pl-PL", { weekday: "short", day: "numeric", month: "short" });
       nextBtn.textContent =
