@@ -7,7 +7,7 @@ import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushSt
 import { $, isDesk, mqD, dl, lsSet, setMsg, getTheme, applyTheme, ui, app } from "./state.js";
 import { closeSheet, toast, ask, resolveAsk, change, playGo, popCb } from "./ui/sheet.js";
 import { renderSubjects, openSubject, ensureSubject, flushSave } from "./ui/subjects.js";
-import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, openNewTask, subjValueForName, tkBack, toggleTask, openAlertTask } from "./ui/tasks.js";
+import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, openNewTask, openExams, subjValueForName, tkBack, toggleTask, openAlertTask } from "./ui/tasks.js";
 import {
   renderPlan,
   initPlanTooltips,
@@ -191,6 +191,14 @@ function shAction(a) {
         p.archivedTasks = (p.archivedTasks || []).filter((x) => x.id !== id);
       }, "Usunięto zadanie z archiwum");
       openArchivedTasks();
+    } else if (k === "exedit") {
+      openTask(id, { back: { view: "exams" } });
+    } else if (k === "exdone") {
+      change((p) => {
+        const t = p.tasks.find((x) => x.id === id);
+        if (t) t.done = true;
+      }, "Oznaczono kolokwium jako zaliczone");
+      openExams();
     } else if (k === "semsw") {
       switchSemester(id);
     } else if (k === "semdel") {
@@ -217,6 +225,9 @@ function shAction(a) {
       break;
     case "sjadd":
       openNewTask({ subj: subjValueForName(ui.ctx.sname), back: { view: "subj", sname: ui.ctx.sname } });
+      break;
+    case "exadd":
+      openNewTask({ cat: "exam", back: { view: "exams" } });
       break;
     case "subj": {
       const c = cache.plan.classes.find((x) => x.id === cid);
@@ -479,6 +490,7 @@ document.addEventListener("click", (e) => {
     ui.mcalOpen = false;
   } else if (k === "edit") ui.editMode = !ui.editMode;
   else if (k === "ol") { toggleOl(!ui.olOpen); return; }
+  else if (k === "exams") { openExams(); return; }
   else if (k === "hd") {
     ui.hideDone = !ui.hideDone;
     lsSet(HD_KEY, ui.hideDone ? "1" : "0");

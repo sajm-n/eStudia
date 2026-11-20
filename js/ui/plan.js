@@ -545,9 +545,7 @@ function renderAhead() {
     const exText = (nextExam.t.text || "").trim();
     const exMain = exText ? exText + (sub ? " (" + sub + ")" : "") : sub || (nextExam.t.note || "").split("\n")[0].slice(0, 40) || "zbliża się";
     pills.push(
-      '<button type="button" class="ah exam" data-a="tk:' +
-        esc(nextExam.t.id) +
-        '"><i></i><span><b>Kolokwium:</b> ' +
+      '<button type="button" class="ah exam" data-a="exams:"><i></i><span><b>Kolokwium:</b> ' +
         esc(exMain) +
         " · " +
         when +

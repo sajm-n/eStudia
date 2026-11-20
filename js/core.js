@@ -437,13 +437,16 @@ export function validatePlan(raw) {
   }
   const dayOverrides = [...dovByDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 
-  /* Domyślny termin powiadomień o zadaniach (z zachowaniem zgodności wstecznej kluczy onsite/online) */
+  /* Domyślny termin powiadomień o zadaniach (z zachowaniem zgodności wstecznej kluczy onsite/online) + poranny skrót dnia */
   const rn = raw.notif && typeof raw.notif === "object" ? raw.notif : {};
   const defRule = normRule(rn.task) || normRule(rn.onsite) || normRule(rn.online) || clone(NOTIF_DEF.task);
+  const rm = rn.morning && typeof rn.morning === "object" ? rn.morning : null;
+  const morningTime = rm && rm.time && normT(rm.time) ? normT(rm.time) : "07:30";
   const notif = {
     task: defRule,
     onsite: normRule(rn.onsite) || clone(defRule),
     online: normRule(rn.online) || clone(defRule),
+    morning: { on: !!(rm && rm.on === true), time: morningTime },
   };
 
   const outPlan = {
@@ -697,3 +700,31 @@ export function classForTask(plan, t) {
   const list = itemsFor(plan, d);
   return list.find((it) => !it.off && taskMatchesClass(plan, t, it)) || list.find((it) => taskMatchesClass(plan, t, it)) || null;
 }
+
+/* Poranny skrót dnia dla powiadomienia push: { title, body } albo null, jeśli dzień jest wolny i bez zadań */
+export function morningSummary(plan, dateObj = new Date()) {
+  if (!plan) return null;
+  const d = day0(dateObj);
+  const dKey = dk(d);
+  const cls = itemsFor(plan, d).filter((x) => !x.off);
+  const dueToday = (plan.tasks || []).filter((t) => !t.done && t.due === dKey);
+  if (!cls.length && !dueToday.length) return null;
+
+  const parts = [];
+  if (cls.length) {
+    const first = cls[0].c;
+    const wCls = cls.length === 1 ? "1 zajęcia" : cls.length + " zajęć";
+    parts.push(wCls + " (start " + fmtT(first.s) + (first.room ? ", " + first.room : "") + ")");
+  }
+  const exams = dueToday.filter(isExamTask).length;
+  const other = dueToday.length - exams;
+  if (exams) parts.push(exams === 1 ? "1 kolokwium" : exams + " kolokwia");
+  if (other) parts.push(other === 1 ? "1 zadanie" : other >= 2 && other <= 4 ? other + " zadania" : other + " zadań");
+
+  const wdShort = d.toLocaleDateString("pl-PL", { weekday: "short" });
+  return {
+    title: "Plan na dziś (" + wdShort + ")",
+    body: parts.join(" · "),
+  };
+}
+

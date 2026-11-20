@@ -209,6 +209,11 @@ function syncFilterControls() {
 
 export function renderTasks() {
   $("hdBtn").setAttribute("aria-checked", ui.hideDone ? "true" : "false");
+  const exBtn = $("exBtn");
+  if (exBtn) {
+    const exN = cache.plan.tasks.filter((t) => !t.done && isExamTask(t)).length;
+    exBtn.textContent = exN ? "Sesja / Kolokwia (" + exN + ")" : "Sesja / Kolokwia";
+  }
 
   const showAdd = !!ui.olOpen;
   if (!ui.olAnim) {
@@ -996,6 +1001,8 @@ export function tkBack() {
     app.openDetail(b.cid, b.date);
   } else if (b && b.view === "subj" && b.sname) {
     app.openSubject(b.sname, "tasks");
+  } else if (b && b.view === "exams") {
+    openExams();
   } else {
     closeSheet();
   }
@@ -1011,6 +1018,86 @@ export function toggleTask(id) {
 
 export function openAlertTask(id) {
   openTask(id);
+}
+
+/* Widok „Sesja / Kolokwia”: wszystkie nadchodzące kolokwia z odliczaniem dni, salą i pełnym zakresem materiału */
+export function openExams() {
+  ui.ctx = { view: "exams" };
+  const td = day0(new Date());
+  const list = cache.plan.tasks
+    .filter((t) => !t.done && isExamTask(t))
+    .sort((a, b) => tkKey(a).localeCompare(tkKey(b)));
+
+  const cards = list
+    .map((t) => {
+      const sub = taskLabelOf(t);
+      const tx = (t.text || "").trim();
+      const head = tx && sub ? tx + " · " + sub : tx || sub || "Kolokwium";
+      const d = t.due ? fromDK(t.due) : null;
+      const diff = d ? Math.round((d - td) / 864e5) : null;
+      let cntTxt = "Bez terminu";
+      let cntCls = "";
+      if (diff !== null) {
+        if (diff < 0) {
+          cntTxt = "Po terminie (" + Math.abs(diff) + " d)";
+          cntCls = " late";
+        } else if (diff === 0) {
+          cntTxt = "Dziś";
+          cntCls = " soon";
+        } else if (diff === 1) {
+          cntTxt = "Jutro";
+          cntCls = " soon";
+        } else if (diff === 2) {
+          cntTxt = "Pojutrze";
+          cntCls = " soon";
+        } else {
+          cntTxt = "Za " + diff + " dni";
+        }
+      }
+      const cls = classForTask(cache.plan, t);
+      const dateStr = d
+        ? d.toLocaleDateString("pl-PL", { weekday: "short", day: "numeric", month: "long" }) +
+          (t.time ? ", " + fmtT(t.time) : "")
+        : "Brak daty";
+      const roomStr = cls && cls.c && cls.c.room ? " · " + cls.c.room : "";
+      const scope = (t.note || "").trim();
+      return (
+        '<div class="ex-card">' +
+        '<div class="ex-head"><span class="ex-cnt' +
+        cntCls +
+        '">' +
+        esc(cntTxt) +
+        '</span><span class="ex-dt">' +
+        esc(dateStr + roomStr) +
+        "</span></div>" +
+        '<div class="ex-title">' +
+        esc(head) +
+        "</div>" +
+        (scope
+          ? '<div class="ex-scope">' + esc(scope) + "</div>"
+          : '<div class="ex-scope empty">Brak opisu zakresu materiału.</div>') +
+        '<div class="ex-acts">' +
+        '<button type="button" class="btn" data-sh="exedit:' +
+        esc(t.id) +
+        '">Edytuj</button>' +
+        '<button type="button" class="btn" data-sh="exdone:' +
+        esc(t.id) +
+        '">Zaliczone ✓</button>' +
+        "</div></div>"
+      );
+    })
+    .join("");
+
+  openSheet(
+    "Sesja / Kolokwia",
+    '<p class="shsub">' +
+      (list.length
+        ? "Nadchodzące kolokwia i egzaminy: " + list.length
+        : "Brak zaplanowanych kolokwiów i egzaminów.") +
+      "</p>" +
+      (list.length ? '<div class="ex-list">' + cards + "</div>" : '<div class="free">Czysto! Dodaj kolokwium przyciskiem poniżej.</div>') +
+      '<div class="acts"><button type="button" class="btn pri" data-sh="exadd">+ Dodaj kolokwium</button><button type="button" class="btn" data-sh="close">Zamknij</button></div>'
+  );
 }
 
 /* Szybkie okno dodawania zadania (np. z zakładki Przedmioty lub widoku Sesja/Kolokwia) */

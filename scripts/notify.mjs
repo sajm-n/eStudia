@@ -4,7 +4,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { validatePlan, taskAlert, taskTrigger, taskSubjectName, taskTitle, taskCat, fromDK, fmtT, day0, same } from "../js/core.js";
+import { validatePlan, taskAlert, taskTrigger, taskSubjectName, taskTitle, taskCat, morningSummary, fromDK, dk, fmtT, day0, same } from "../js/core.js";
 import { VAPID_PUBLIC } from "../js/config.js";
 import { sendPush, resolveVapidPrivate } from "./webpush.mjs";
 
@@ -87,24 +87,40 @@ if (!state.sent || typeof state.sent !== "object") state.sent = {};
 const stateBefore = JSON.stringify(state);
 const subsBefore = JSON.stringify(subs);
 
+const todayKey = dk(day0(now));
+const morningId = "morning:" + todayKey;
 const live = new Set(plan.tasks.map((t) => t.id));
+live.add(morningId);
 for (const k of Object.keys(state.sent)) if (!live.has(k)) delete state.sent[k];
 if (!state.fail || typeof state.fail !== "object") state.fail = {};
 
 const dev = (s) => crypto.createHash("sha256").update(s.endpoint).digest("hex").slice(0, 12);
 const startOf = (t) => taskTrigger(t, plan.notif).start.getTime();
-const delivered = (t, s) => {
-  const val = state.sent[t.id];
+const deliveredId = (id, minTs, s) => {
+  const val = state.sent[id];
   if (typeof val === "number") return true;
   const ts = val && val[dev(s)];
-  return !!ts && ts >= startOf(t);
+  return !!ts && ts >= minTs;
 };
+const delivered = (t, s) => deliveredId(t.id, startOf(t), s);
 const markSent = (id, s) => {
   if (typeof state.sent[id] === "number" || !state.sent[id]) state.sent[id] = {};
   state.sent[id][dev(s)] = Date.now();
 };
 
-/* Tryb --next: sprawdza, czy w najbliższych WINDOW_MIN minutach jakieś zadanie wymaga powiadomienia.
+/* Poranny skrót dnia (jeśli włączony w plan.notif.morning i dziś są zajęcia lub zadania) */
+function getMorningWindow() {
+  const m = plan.notif && plan.notif.morning;
+  if (!m || !m.on) return null;
+  const sum = morningSummary(plan, now);
+  if (!sum) return null;
+  const [hh, mm] = (m.time || "07:30").split(":").map(Number);
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0);
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  return { id: morningId, start, end, payload: Object.assign({}, sum, { tag: "morning-" + todayKey, url: "./" }) };
+}
+
+/* Tryb --next: sprawdza, czy w najbliższych WINDOW_MIN minutach jakieś zadanie lub poranny skrót wymaga powiadomienia.
    Kod wyjścia 0 = warto czekać w pętli; kod 10 = brak zadań w oknie (można od razu zakończyć workflow). */
 if (CHECK_NEXT) {
   if (!subs.length) {
@@ -126,6 +142,12 @@ if (CHECK_NEXT) {
     if (sMs <= nowMs) dueNow++;
     if (sMs < nextAt) nextAt = sMs;
   }
+  const mw = getMorningWindow();
+  if (mw && nowMs <= mw.end.getTime() && subs.some((s) => !deliveredId(mw.id, mw.start.getTime(), s))) {
+    const sMs = mw.start.getTime();
+    if (sMs <= nowMs) dueNow++;
+    if (sMs < nextAt) nextAt = sMs;
+  }
   const shouldLoop = dueNow > 0 || nextAt <= horizonMs;
   const info = {
     shouldLoop,
@@ -143,19 +165,26 @@ if (!TEST && !DRY && !(Date.parse(state.hb) > now.getTime() - 30 * 60 * 1000)) {
 }
 
 const jobs = TEST
-  ? [{ id: "test", payload: { title: "eStudia", body: "To jest testowe powiadomienie push — działa przy zamkniętej aplikacji.", tag: "test", url: "./" } }]
+  ? [{ id: "test", minTs: 0, payload: { title: "eStudia", body: "To jest testowe powiadomienie push — działa przy zamkniętej aplikacji.", tag: "test", url: "./" } }]
   : plan.tasks
       .filter((t) => taskAlert(t, now, plan.notif) === "soon" && subs.some((s) => !delivered(t, s)))
       .map((t) => ({
         id: t.id,
-        task: t,
+        minTs: startOf(t),
         payload: Object.assign(buildTexts(plan, t), { tag: t.id, url: "./?task=" + encodeURIComponent(t.id) }),
       }));
 
-console.log(now.toString() + " · zadań do powiadomienia: " + jobs.length + " · urządzeń: " + subs.length);
+if (!TEST) {
+  const mw = getMorningWindow();
+  if (mw && now >= mw.start && now <= mw.end && subs.some((s) => !deliveredId(mw.id, mw.start.getTime(), s))) {
+    jobs.push({ id: mw.id, minTs: mw.start.getTime(), payload: mw.payload });
+  }
+}
+
+console.log(now.toString() + " · powiadomień do wysłania: " + jobs.length + " · urządzeń: " + subs.length);
 if (!jobs.length) finish(0);
 if (!subs.length) {
-  console.log("Brak zapisanych urządzeń — nic nie wysyłam (zadania zostaną wysłane, gdy urządzenie się zapisze).");
+  console.log("Brak zapisanych urządzeń — nic nie wysyłam (powiadomienia zostaną wysłane, gdy urządzenie się zapisze).");
   finish(0);
 }
 if (DRY) {
@@ -181,7 +210,7 @@ for (const j of jobs) {
   let okCount = 0;
   for (const s of subs) {
     if (gone.has(s.endpoint)) continue;
-    if (j.id !== "test" && delivered(j.task, s)) continue;
+    if (j.id !== "test" && deliveredId(j.id, j.minTs, s)) continue;
     const d = dev(s);
     const host = new URL(s.endpoint).host;
     try {
@@ -204,7 +233,7 @@ for (const j of jobs) {
       console.log("::warning::Błąd wysyłki: " + e.message);
     }
   }
-  console.log("Zadanie " + j.id + ": dostarczono teraz na " + okCount + " urządzeń.");
+  console.log("Powiadomienie " + j.id + ": dostarczono teraz na " + okCount + " urządzeń.");
 }
 
 if (gone.size) {

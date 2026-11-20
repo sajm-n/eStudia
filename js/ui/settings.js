@@ -97,6 +97,7 @@ export function dfRender() {
   if (!box) return;
   const n = cache.plan.notif;
   const r = n.task || n.onsite || n.online;
+  const m = n.morning || { on: false, time: "07:30" };
   box.innerHTML =
     '<div class="dfb"><label class="fl">Domyślne powiadomienie o zadaniach<select name="task">' +
     dfSelect(r) +
@@ -106,7 +107,14 @@ export function dfRender() {
     esc(r.m === "day" ? r.time : "18:00") +
     '"></label><p class="hint" data-ex="task">' +
     esc(dfExample(r)) +
-    "</p></div>";
+    '</p></div>' +
+    '<div class="dfb"><label class="chkrow"><input type="checkbox" name="morningOn"' +
+    (m.on ? " checked" : "") +
+    '><span>Poranny skrót dnia (push)</span></label><label class="fl" data-tm="morning"' +
+    (m.on ? "" : " hidden") +
+    '>Godzina porannego skrótu<input type="time" name="morningT" value="' +
+    esc(m.time || "07:30") +
+    '"></label><p class="hint">Jedno powiadomienie rano z liczbą zajęć, startem, salą i dzisiejszymi zadaniami (tylko gdy coś masz).</p></div>';
   const save = () => {
     const E = $("dfF").elements;
     const rule = dfRead("task");
@@ -116,7 +124,15 @@ export function dfRender() {
       return;
     }
     box.querySelector('[data-ex="task"]').textContent = dfExample(rule);
-    if (JSON.stringify(cache.plan.notif.task) === JSON.stringify(rule)) {
+    const mOn = !!E.morningOn.checked;
+    box.querySelector('[data-tm="morning"]').hidden = !mOn;
+    const mTime = normT(E.morningT.value) || "07:30";
+    const curM = cache.plan.notif.morning || { on: false, time: "07:30" };
+    if (
+      JSON.stringify(cache.plan.notif.task) === JSON.stringify(rule) &&
+      curM.on === mOn &&
+      curM.time === mTime
+    ) {
       if ($("dfMsg").classList.contains("bad")) setMsg("dfMsg", "");
       return;
     }
@@ -124,12 +140,15 @@ export function dfRender() {
       p.notif.task = rule;
       p.notif.onsite = Object.assign({}, rule);
       p.notif.online = Object.assign({}, rule);
+      p.notif.morning = { on: mOn, time: mTime };
     });
     setMsg("dfMsg", ok ? "Zapisano ✓" : "Nie udało się zapisać.", ok ? "ok" : "bad");
   };
   const E = $("dfF").elements;
   E.task.onchange = save;
   E.taskT.onchange = save;
+  E.morningOn.onchange = save;
+  E.morningT.onchange = save;
 }
 
 export function openSettings() {

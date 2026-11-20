@@ -24,6 +24,7 @@ import {
   tasksForClass,
   classForTask,
   nextOccurrenceBySubject,
+  morningSummary,
   isLate,
   fromDK,
   dk,
@@ -332,5 +333,28 @@ test("v2.6: niezależne zadania, dopasowanie czasowe do zajęć, kolokwium/spraw
   assert.equal(nextLab.cid, "c01");
   assert.equal(nextLab.dk, "2026-11-30");
   assert.equal(nextLab.s, "08:00");
+});
+
+test("v2.7b: morningSummary generuje poranny skrót dnia i respektuje dni wolne", () => {
+  const v = validatePlan({
+    ...DEFAULT_PLAN,
+    notif: { morning: { on: true, time: "07:15" } },
+    tasks: [
+      { id: "ex1", cat: "exam", text: "", note: "Całki", due: "2026-11-23", time: "08:00", done: false },
+      { id: "tk1", text: "Oddać sprawozdanie", due: "2026-11-23", time: "10:00", done: false },
+    ],
+  });
+  assert.equal(v.ok, true);
+  assert.deepEqual(v.plan.notif.morning, { on: true, time: "07:15" });
+
+  // Poniedziałek 23.11 ma zajęcia (start 8:00) + 1 kolokwium + 1 zadanie
+  const mon = morningSummary(v.plan, fromDK("2026-11-23"));
+  assert.ok(mon);
+  assert.match(mon.body, /start 8:00/);
+  assert.match(mon.body, /1 kolokwium/);
+  assert.match(mon.body, /1 zadanie/);
+
+  // Sobota 21.11 nie ma zajęć ani zadań -> null (nie wysyła pustego powiadomienia)
+  assert.equal(morningSummary(v.plan, fromDK("2026-11-21")), null);
 });
 
