@@ -1,12 +1,12 @@
 /* ===== Ustawienia, domyślne powiadomienia, kopia zapasowa, status synchronizacji i konflikty ===== */
 
 import { APP_VERSION, WD_IN } from "../config.js";
-import { pad, day0, wd, dk, fromDK, normT, fmtT, mondayOf, validatePlan, ruleStart } from "../core.js";
+import { pad, day0, wd, dk, fromDK, normT, fmtT, mondayOf, validatePlan, ruleStart, uid, clone } from "../core.js";
 import { cfg, cache, sync, conflict, saveCfg, resetSyncTarget, commit, syncAll, testToken } from "../sync.js";
 import { ensurePush, renderNotifState, renderPushDiag } from "../push.js";
 import { $, esc, dl, hm, selOpts, setMsg, getTheme, ui } from "../state.js";
 import { openSheet, closeSheet, toast, ask, change } from "./sheet.js";
-import { fmtDur } from "./tasks.js";
+import { fmtDur, taskLabelOf, catChip, taskMeta } from "./tasks.js";
 
 export function syncText() {
   const s = sync.state;
@@ -229,6 +229,49 @@ export function openSettings() {
       '<p class="hint">Nowe zadanie dostaje taki termin powiadomienia, dopóki w jego formularzu nie wybierzesz innego (przycisk „Domyślne”). Zmiana obejmuje też istniejące zadania bez własnego terminu.</p>' +
       '<form id="dfF" novalidate autocomplete="off"><div id="dfBox"></div><p id="dfMsg" class="msg" role="status"></p>' +
       '<div class="acts"><button type="button" class="btn" data-sh="dfreset">Przywróć wartości startowe</button></div></form>' +
+      '<h3 class="sec">Semestr i archiwum</h3>' +
+      '<form id="semF" novalidate autocomplete="off">' +
+      '<label class="fl">Nazwa bieżącego semestru<input name="sem" maxlength="60" value="' +
+      esc(p.semester || "") +
+      '" placeholder="np. Semestr 1 (2026/27)"></label>' +
+      '<p id="semMsg" class="msg" role="status"></p>' +
+      '<div class="acts"><button type="submit" class="btn">Zapisz nazwę</button><button type="button" class="btn" data-sh="newsem">Zakończ semestr i zacznij nowy</button></div></form>' +
+      (() => {
+        const doneN = p.tasks.filter((t) => t.done).length;
+        const archN = Array.isArray(p.archivedTasks) ? p.archivedTasks.length : 0;
+        const sems = Array.isArray(p.semesters) ? p.semesters : [];
+        const semRows = sems.length
+          ? '<p class="hint" style="margin-top:10px">Zapisane semestry (przełączenie zachowuje obecny semestr w archiwum):</p><div class="sem-list">' +
+            sems
+              .map(
+                (s) =>
+                  '<div class="sem-row"><div class="sem-info"><b>' +
+                  esc(s.name) +
+                  "</b><span>" +
+                  s.plan.classes.length +
+                  " zajęć · " +
+                  s.plan.tasks.length +
+                  ' zadań</span></div><div class="sem-acts"><button type="button" class="btn" data-sh="semsw:' +
+                  esc(s.id) +
+                  '">Przełącz</button><button type="button" class="btn dng" data-sh="semdel:' +
+                  esc(s.id) +
+                  '">Usuń</button></div></div>'
+              )
+              .join("") +
+            "</div>"
+          : "";
+        return (
+          '<div class="acts" style="margin-top:10px">' +
+          (doneN
+            ? '<button type="button" class="btn" data-sh="archtasks">Zarchiwizuj ukończone zadania (' + doneN + ")</button>"
+            : "") +
+          (archN
+            ? '<button type="button" class="btn" data-sh="viewarch">Pokaż archiwum zadań (' + archN + ")</button>"
+            : "") +
+          "</div>" +
+          semRows
+        );
+      })() +
       '<h3 class="sec">Kopia zapasowa</h3>' +
       '<div class="acts"><button type="button" class="btn" data-sh="export">Eksportuj plan</button><button type="button" class="btn" data-sh="import">Importuj plan</button><button type="button" class="btn dng" data-sh="reset">Przywróć plan domyślny</button></div>' +
       '<input type="file" id="impf" accept=".json,application/json" hidden>' +
@@ -243,6 +286,15 @@ export function openSettings() {
   renderNotifState();
   renderPushDiag();
   dfRender();
+  $("semF").onsubmit = (ev) => {
+    ev.preventDefault();
+    const val = $("semF").elements.sem.value.trim();
+    const ok = change((pl) => {
+      if (val) pl.semester = val;
+      else delete pl.semester;
+    });
+    setMsg("semMsg", ok ? "Zapisano nazwę semestru ✓" : "Nie udało się zapisać.", ok ? "ok" : "bad");
+  };
   try {
     const pr = document.createElement("div");
     pr.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;padding-bottom:env(safe-area-inset-bottom,0px)";
@@ -361,4 +413,151 @@ export function openConflict() {
       '<button type="button" class="btn blk" data-sh="clocal">Zachowaj moją wersję i nadpisz GitHuba</button>' +
       '<button type="button" class="btn blk" data-sh="close">Zdecyduj później</button>'
   );
+}
+
+/* ----- Archiwizacja ukończonych zadań i zarządzanie semestrami ----- */
+export function archiveDoneTasks() {
+  const done = cache.plan.tasks.filter((t) => t.done);
+  if (!done.length) {
+    toast("Brak ukończonych zadań do zarchiwizowania");
+    return;
+  }
+  const ok = change((p) => {
+    const keep = [];
+    const moved = [];
+    for (const t of p.tasks) {
+      if (t.done) {
+        const copy = clone(t);
+        copy.label = taskLabelOf(t);
+        moved.push(copy);
+      } else keep.push(t);
+    }
+    p.tasks = keep;
+    p.archivedTasks = (Array.isArray(p.archivedTasks) ? p.archivedTasks : []).concat(moved);
+  }, "Zarchiwizowano ukończone zadania (" + done.length + ")");
+  if (ok) openSettings();
+}
+
+export function openArchivedTasks() {
+  const list = Array.isArray(cache.plan.archivedTasks) ? cache.plan.archivedTasks : [];
+  const rows = list
+    .slice()
+    .reverse()
+    .map(
+      (t) =>
+        '<div class="tk-row done"><div class="tk-body" style="padding-left:12px"><span class="tk-tx">' +
+        catChip(t) +
+        esc(t.text) +
+        '</span><span class="tk-meta">' +
+        esc(t.label || taskLabelOf(t)) +
+        " · " +
+        esc(taskMeta(t)) +
+        '</span></div><div class="sem-acts" style="align-items:center;padding-right:8px"><button type="button" class="btn" data-sh="archrest:' +
+        esc(t.id) +
+        '">Przywróć</button><button type="button" class="tk-del" aria-label="Usuń z archiwum" data-sh="archdel:' +
+        esc(t.id) +
+        '">×</button></div></div>'
+    )
+    .join("");
+  openSheet(
+    "Archiwum zadań (" + list.length + ")",
+    (list.length ? '<div class="tk-list">' + rows + "</div>" : '<p class="tk-empty">Archiwum zadań jest puste.</p>') +
+      '<div class="acts"><button type="button" class="btn" data-sh="backset">Wróć do Ustawień</button><button type="button" class="btn" data-sh="close">Zamknij</button></div>'
+  );
+}
+
+export function openNewSemester() {
+  const curName = cache.plan.semester || "Semestr " + ((Array.isArray(cache.plan.semesters) ? cache.plan.semesters.length : 0) + 1);
+  const nextNum = (Array.isArray(cache.plan.semesters) ? cache.plan.semesters.length : 0) + 2;
+  openSheet(
+    "Nowy semestr",
+    '<p class="shsub">Bieżący plan zostanie zapisany w archiwum semestrów jako <b>' +
+      esc(curName) +
+      "</b>. Zawsze możesz do niego wrócić w Ustawieniach.</p>" +
+      '<form id="nsf" novalidate autocomplete="off">' +
+      '<label class="fl">Nazwa archiwizowanego semestru<input name="oldName" maxlength="60" value="' +
+      esc(curName) +
+      '"></label>' +
+      '<label class="fl">Nazwa nowego semestru<input name="newName" maxlength="60" value="Semestr ' +
+      nextNum +
+      '" placeholder="np. Semestr 2 (lato 2027)"></label>' +
+      '<label class="chkrow"><input type="checkbox" name="keepSubj"><span>Zachowaj notatki przedmiotów z obecnego semestru</span></label>' +
+      '<p id="nsErr" class="msg bad" role="alert"></p>' +
+      '<div class="acts"><button type="submit" class="btn pri">Zarchiwizuj i rozpocznij nowy</button><button type="button" class="btn" data-sh="backset">Anuluj</button></div></form>',
+    'input[name="newName"]'
+  );
+  const f = $("nsf");
+  f.onsubmit = (ev) => {
+    ev.preventDefault();
+    const oldName = f.elements.oldName.value.trim();
+    const newName = f.elements.newName.value.trim();
+    const keepSubj = f.elements.keepSubj.checked;
+    if (!oldName || !newName) {
+      $("nsErr").textContent = "Podaj obie nazwy semestrów.";
+      return;
+    }
+    const ok = change((p) => {
+      const snap = clone(p);
+      delete snap.semesters;
+      snap.semester = oldName;
+      const sems = Array.isArray(p.semesters) ? p.semesters.slice() : [];
+      sems.push({ id: uid(), name: oldName, savedAt: Date.now(), plan: snap });
+      p.semester = newName;
+      p.classes = [];
+      p.exceptions = [];
+      p.tasks = [];
+      delete p.absences;
+      delete p.absLimits;
+      delete p.archivedTasks;
+      if (!keepSubj) p.subjects = [];
+      p.semesters = sems;
+    }, "Rozpoczęto " + newName);
+    if (ok) closeSheet();
+  };
+}
+
+export function switchSemester(id) {
+  const target = (cache.plan.semesters || []).find((s) => s.id === id);
+  if (!target) return;
+  const curName = cache.plan.semester || "Poprzedni semestr";
+  const ok = change((p) => {
+    const sems = Array.isArray(p.semesters) ? p.semesters.filter((s) => s.id !== id) : [];
+    const curSnap = clone(p);
+    delete curSnap.semesters;
+    curSnap.semester = curName;
+    sems.push({ id: uid(), name: curName, savedAt: Date.now(), plan: curSnap });
+
+    const next = clone(target.plan);
+    p.start = next.start;
+    p.startWeek = next.startWeek;
+    p.classes = next.classes || [];
+    p.exceptions = next.exceptions || [];
+    p.subjects = next.subjects || [];
+    p.tasks = next.tasks || [];
+    p.notif = next.notif || p.notif;
+    p.semester = target.name;
+    if (next.absences && next.absences.length) p.absences = next.absences;
+    else delete p.absences;
+    if (next.absLimits && Object.keys(next.absLimits).length) p.absLimits = next.absLimits;
+    else delete p.absLimits;
+    if (next.archivedTasks && next.archivedTasks.length) p.archivedTasks = next.archivedTasks;
+    else delete p.archivedTasks;
+    p.semesters = sems;
+  }, "Przełączono na: " + target.name);
+  if (ok) openSettings();
+}
+
+export function deleteSemester(id) {
+  const target = (cache.plan.semesters || []).find((s) => s.id === id);
+  if (!target) return;
+  ask("Usunąć zapisany semestr „" + target.name + "” z archiwum?", "Usuń semestr").then((yes) => {
+    if (!yes) {
+      openSettings();
+      return;
+    }
+    change((p) => {
+      p.semesters = (p.semesters || []).filter((s) => s.id !== id);
+    }, "Usunięto semestr „" + target.name + "”");
+    openSettings();
+  });
 }

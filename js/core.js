@@ -309,6 +309,82 @@ export function validatePlan(raw) {
     tasks.push(t);
   }
 
+  /* Nieobecności na zajęciach (unikalne po cid|date) oraz opcjonalne limity na cid */
+  const absRaw = Array.isArray(raw.absences) ? raw.absences.slice(0, 2000) : [];
+  const absByKey = new Map();
+  for (const x of absRaw) {
+    if (!x || typeof x !== "object" || typeof x.cid !== "string" || !ids.has(x.cid) || !fromDK(x.date)) continue;
+    absByKey.set(x.cid + "|" + x.date, { cid: x.cid, date: x.date });
+  }
+  const absences = [...absByKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.cid.localeCompare(b.cid));
+
+  const absLimits = {};
+  if (raw.absLimits && typeof raw.absLimits === "object" && !Array.isArray(raw.absLimits)) {
+    for (const [cid, lim] of Object.entries(raw.absLimits)) {
+      if (!ids.has(cid)) continue;
+      const n = Math.round(+lim);
+      if (Number.isInteger(n) && n >= 0 && n <= 30) absLimits[cid] = n;
+    }
+  }
+
+  /* Zarchiwizowane ukończone zadania */
+  const archRaw = Array.isArray(raw.archivedTasks) ? raw.archivedTasks.slice(0, 5000) : [];
+  const archivedTasks = [];
+  const atids = new Set();
+  for (const x of archRaw) {
+    if (!x || typeof x !== "object") continue;
+    const kind = x.kind === "online" ? "online" : x.kind === "onsite" ? "onsite" : null;
+    if (!kind) continue;
+    const text = str(x.text, 300);
+    if (!text) continue;
+    let id = okId(x.id) ? x.id : uid();
+    while (atids.has(id)) id = uid();
+    atids.add(id);
+    const t = {
+      id,
+      kind,
+      text,
+      sid: sids.has(x.sid) ? x.sid : "",
+      cid: ids.has(x.cid) ? x.cid : "",
+      date: fromDK(x.date) ? x.date : "",
+      due: fromDK(x.due) ? x.due : "",
+      time: x.time && normT(x.time) ? normT(x.time) : "",
+      url: "",
+      at: Number.isFinite(x.at) && x.at > 0 ? Math.floor(x.at) : 0,
+      note: str(x.note, 1000),
+      done: true,
+    };
+    if (typeof x.cat === "string" && x.cat !== "task" && Object.prototype.hasOwnProperty.call(TASK_TYPES, x.cat)) {
+      t.cat = x.cat;
+    }
+    if (typeof x.label === "string" && x.label.trim()) t.label = str(x.label, 120);
+    archivedTasks.push(t);
+  }
+
+  /* Nazwa bieżącego semestru i archiwum poprzednich semestrów */
+  const semester = str(raw.semester, 60);
+  const semRaw = Array.isArray(raw.semesters) ? raw.semesters.slice(0, 20) : [];
+  const semesters = [];
+  const semIds = new Set();
+  for (const s of semRaw) {
+    if (!s || typeof s !== "object" || !s.plan || typeof s.plan !== "object") continue;
+    const name = str(s.name, 60);
+    if (!name) continue;
+    const sv = validatePlan(Object.assign({}, s.plan, { semesters: [] }));
+    if (!sv.ok) continue;
+    let id = okId(s.id) ? s.id : uid();
+    while (semIds.has(id)) id = uid();
+    semIds.add(id);
+    const sp = sv.plan;
+    delete sp.semesters;
+    semesters.push({
+      id,
+      name,
+      savedAt: Number.isFinite(s.savedAt) && s.savedAt > 0 ? Math.floor(s.savedAt) : Date.now(),
+      plan: sp,
+    });
+  }
+
   /* Domyślne terminy powiadomień (osobno dla zadań stacjonarnych i online); brak lub błąd = wartości startowe */
   const rn = raw.notif && typeof raw.notif === "object" ? raw.notif : {};
   const notif = {
@@ -316,20 +392,45 @@ export function validatePlan(raw) {
     online: normRule(rn.online) || clone(NOTIF_DEF.online),
   };
 
-  return {
-    ok: true,
-    plan: {
-      v: 1,
-      rev: Number.isFinite(raw.rev) ? raw.rev : 0,
-      start: raw.start,
-      startWeek: raw.startWeek,
-      classes,
-      exceptions: [...byKey.values()],
-      subjects,
-      tasks,
-      notif,
-    },
+  const outPlan = {
+    v: 1,
+    rev: Number.isFinite(raw.rev) ? raw.rev : 0,
+    start: raw.start,
+    startWeek: raw.startWeek,
+    classes,
+    exceptions: [...byKey.values()],
+    subjects,
+    tasks,
+    notif,
   };
+  if (semester) outPlan.semester = semester;
+  if (absences.length) outPlan.absences = absences;
+  if (Object.keys(absLimits).length) outPlan.absLimits = absLimits;
+  if (archivedTasks.length) outPlan.archivedTasks = archivedTasks;
+  if (semesters.length) outPlan.semesters = semesters;
+
+  return { ok: true, plan: outPlan };
+}
+
+/* ----- Nieobecności na zajęciach ----- */
+export function absencesOf(plan, cid) {
+  const list = Array.isArray(plan && plan.absences) ? plan.absences : [];
+  return list.filter((x) => x.cid === cid).map((x) => x.date);
+}
+
+export function isAbsentOn(plan, cid, date) {
+  const list = Array.isArray(plan && plan.absences) ? plan.absences : [];
+  return list.some((x) => x.cid === cid && x.date === date);
+}
+
+/* Domyślny limit nieobecności: 2 dla laboratoriów i ćwiczeń; null (brak limitu) dla wykładów/innych, chyba że ustawiono własny */
+export function absenceLimit(plan, cls) {
+  if (!cls) return null;
+  const lims = plan && plan.absLimits;
+  if (lims && Object.prototype.hasOwnProperty.call(lims, cls.id)) {
+    return lims[cls.id] > 0 ? lims[cls.id] : null;
+  }
+  return cls.type === "l" || cls.type === "c" ? 2 : null;
 }
 
 export const serialize = (p) => JSON.stringify(p, null, 2) + "\n";

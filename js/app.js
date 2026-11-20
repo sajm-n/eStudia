@@ -1,7 +1,7 @@
 /* ===== Główny punkt wejścia aplikacji eStudia ===== */
 
 import { APP_VERSION, TABS, TAB_KEY, TV_KEY, HD_KEY, NOTIF_DEF, DEFAULT_PLAN } from "./config.js";
-import { day0, same, dk, fromDK, clone, uid, serialize } from "./core.js";
+import { day0, same, dk, fromDK, clone, uid, serialize, absenceLimit } from "./core.js";
 import { cache, conflict, hooks, commit, syncAll, resolveConflict, clearTokenState } from "./sync.js";
 import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushState } from "./push.js";
 import { $, isDesk, mqD, dl, lsSet, setMsg, getTheme, applyTheme, ui, app } from "./state.js";
@@ -23,7 +23,18 @@ import {
   shiftWeek,
   goToday,
 } from "./ui/plan.js";
-import { renderSync, openSettings, openConflict, dfRender, download } from "./ui/settings.js";
+import {
+  renderSync,
+  openSettings,
+  openConflict,
+  dfRender,
+  download,
+  archiveDoneTasks,
+  openArchivedTasks,
+  openNewSemester,
+  switchSemester,
+  deleteSemester,
+} from "./ui/settings.js";
 
 function renderTabs() {
   for (const k in TABS) {
@@ -130,6 +141,46 @@ function shAction(a) {
         p.tasks = p.tasks.filter((x) => x.id !== id);
       }, "Usunięto zadanie");
       rerenderDetail('input[name="text"]');
+    } else if (k === "abs") {
+      const cls = cache.plan.classes.find((x) => x.id === cid);
+      if (!cls) return;
+      if (id === "toggle") {
+        change((p) => {
+          const list = Array.isArray(p.absences) ? p.absences : [];
+          const exists = list.some((x) => x.cid === cid && x.date === date);
+          p.absences = exists ? list.filter((x) => !(x.cid === cid && x.date === date)) : list.concat([{ cid, date }]);
+        });
+        rerenderDetail('[data-sh="abs:toggle"]');
+      } else if (id === "inc" || id === "dec") {
+        const cur = absenceLimit(cache.plan, cls);
+        const curNum = cur === null ? 0 : cur;
+        const next = id === "inc" ? Math.min(30, curNum + 1) : Math.max(0, curNum - 1);
+        change((p) => {
+          if (!p.absLimits) p.absLimits = {};
+          p.absLimits[cid] = next;
+        });
+        rerenderDetail('[data-sh="abs:' + id + '"]');
+      }
+    } else if (k === "archrest") {
+      const t = (cache.plan.archivedTasks || []).find((x) => x.id === id);
+      if (!t) return;
+      change((p) => {
+        p.archivedTasks = (p.archivedTasks || []).filter((x) => x.id !== id);
+        const copy = clone(t);
+        delete copy.label;
+        copy.done = false;
+        p.tasks.push(copy);
+      }, "Przywrócono zadanie z archiwum");
+      openArchivedTasks();
+    } else if (k === "archdel") {
+      change((p) => {
+        p.archivedTasks = (p.archivedTasks || []).filter((x) => x.id !== id);
+      }, "Usunięto zadanie z archiwum");
+      openArchivedTasks();
+    } else if (k === "semsw") {
+      switchSemester(id);
+    } else if (k === "semdel") {
+      deleteSemester(id);
     }
     return;
   }
@@ -137,6 +188,18 @@ function shAction(a) {
   switch (a) {
     case "close":
       closeSheet();
+      break;
+    case "backset":
+      openSettings();
+      break;
+    case "archtasks":
+      archiveDoneTasks();
+      break;
+    case "viewarch":
+      openArchivedTasks();
+      break;
+    case "newsem":
+      openNewSemester();
       break;
     case "subj": {
       const c = cache.plan.classes.find((x) => x.id === cid);

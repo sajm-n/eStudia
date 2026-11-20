@@ -1,7 +1,7 @@
 /* ===== Katalog przedmiotów, wymagania, notatki i zgodność z MacBookiem ===== */
 
 import { TYPES, TYPE_ORDER, GROUPS, MAC_OPTS, MAC_TXT } from "../config.js";
-import { dk, mn, uid, isLate, taskGroup, isExamTask } from "../core.js";
+import { dk, mn, uid, isLate, taskGroup, isExamTask, absencesOf, absenceLimit } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, reduced, nameLc, ui } from "../state.js";
 import { openSheet, change } from "./sheet.js";
@@ -108,6 +108,27 @@ export function renderSubjects() {
         .map((e) => {
           const rec = subjRec(e.name);
           const open = subjTasks(e.name).filter((t) => !t.done).length;
+          const absChips = cache.plan.classes
+            .filter((c) => nameLc(c.name) === nameLc(e.name))
+            .map((c) => {
+              const cnt = absencesOf(cache.plan, c.id).length;
+              if (!cnt) return "";
+              const lim = absenceLimit(cache.plan, c);
+              const cls = lim !== null ? (cnt > lim ? " abs-bad" : cnt === lim ? " warn" : "") : "";
+              const lbl = c.type !== "x" ? TYPES[c.type].slice(0, 3) + "." : "";
+              return (
+                '<span class="ev' +
+                cls +
+                '">Nieob.' +
+                (lbl ? " " + esc(lbl) : "") +
+                ": " +
+                cnt +
+                (lim !== null ? "/" + lim : "") +
+                "</span>"
+              );
+            })
+            .filter(Boolean)
+            .join("");
           return (
             '<button type="button" class="sbi" data-a="sj:' +
             encodeURIComponent(e.name) +
@@ -117,6 +138,7 @@ export function renderSubjects() {
             e.types.map((t) => '<span class="ev">' + esc(TYPES[t]) + "</span>").join("") +
             macChip(rec ? rec.mac : "") +
             (hasNotes(rec) ? '<span class="ev">Notatki</span>' : "") +
+            absChips +
             (open ? '<span class="ev tk"><i></i>Do zrobienia: ' + open + "</span>" : "") +
             (e.persons.length ? '<span class="pp">' + esc(e.persons.join(", ")) + "</span>" : "") +
             '</span><b class="chev" aria-hidden="true">›</b></button>'

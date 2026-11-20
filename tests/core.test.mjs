@@ -14,6 +14,9 @@ import {
   taskGroup,
   taskCat,
   isExamTask,
+  absencesOf,
+  isAbsentOn,
+  absenceLimit,
   isLate,
   fromDK,
   dk,
@@ -182,4 +185,39 @@ test("taskCat, isExamTask i validatePlan: zachowanie kategorii zadań i wykrywan
   assert.equal(isExamTask(v.plan.tasks[2]), false);
   assert.equal(v.plan.tasks[3].cat, "project");
   assert.equal(v.plan.tasks[4].cat, undefined); // domyślne „task” nie zaśmieca JSON-a
+});
+
+test("absences, absLimits, archivedTasks i semesters: walidacja i helpery v2.4", () => {
+  const raw = {
+    ...DEFAULT_PLAN,
+    semester: "Semestr 1 (2026/27)",
+    absences: [
+      { cid: "c01", date: "2026-10-12" },
+      { cid: "c01", date: "2026-10-12" }, // duplikat
+      { cid: "c01", date: "2026-10-19" },
+      { cid: "nieistniejace", date: "2026-10-19" }, // powinno zostać wycięte
+    ],
+    absLimits: { c01: 3, c05: 1, nieistniejace: 5 },
+    archivedTasks: [
+      { id: "a1", kind: "online", text: "Stary quiz", due: "2026-10-15", done: true, label: "Matematyka I" },
+    ],
+    semesters: [
+      { id: "s1", name: "Semestr 0", savedAt: 1700000000000, plan: DEFAULT_PLAN },
+    ],
+  };
+  const v = validatePlan(raw);
+  assert.equal(v.ok, true);
+  assert.equal(v.plan.semester, "Semestr 1 (2026/27)");
+  assert.deepEqual(absencesOf(v.plan, "c01"), ["2026-10-12", "2026-10-19"]);
+  assert.equal(isAbsentOn(v.plan, "c01", "2026-10-12"), true);
+  assert.equal(isAbsentOn(v.plan, "c01", "2026-10-26"), false);
+  // c01 ma nadpisany limit 3; c02 (lab) domyślnie 2; c05 (wykład) ma nadpisany 1; c03 (wykład) domyślnie null
+  assert.equal(absenceLimit(v.plan, v.plan.classes.find((c) => c.id === "c01")), 3);
+  assert.equal(absenceLimit(v.plan, v.plan.classes.find((c) => c.id === "c02")), 2);
+  assert.equal(absenceLimit(v.plan, v.plan.classes.find((c) => c.id === "c05")), 1);
+  assert.equal(absenceLimit(v.plan, v.plan.classes.find((c) => c.id === "c03")), null);
+  assert.equal(v.plan.archivedTasks.length, 1);
+  assert.equal(v.plan.archivedTasks[0].label, "Matematyka I");
+  assert.equal(v.plan.semesters.length, 1);
+  assert.equal(v.plan.semesters[0].name, "Semestr 0");
 });

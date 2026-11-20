@@ -1,7 +1,7 @@
 /* ===== Widok planu zajęć: kalendarz, widok dnia, siatka tygodnia, linia postępu i edycja zajęć ===== */
 
 import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW, DOWS } from "../config.js";
-import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, endOf, overlaps, isLate, taskGroup, isExamTask } from "../core.js";
+import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, endOf, overlaps, isLate, taskGroup, isExamTask, absencesOf, isAbsentOn, absenceLimit } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, K, reduced, isDesk, wk, pre, items, dl, dlong, t5, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, toast, change, playGo } from "./sheet.js";
@@ -230,6 +230,7 @@ function card(it, cls, badge) {
   else if (c.weeks !== "all") tags.push('<span class="ev">co 2 tyg.</span>');
   if (it.off) tags.push('<span class="ev warn">Odwołane</span>');
   else if (it.ex) tags.push('<span class="ev warn">Zmiana tego dnia</span>');
+  if (isAbsentOn(cache.plan, it.id, it.date)) tags.push('<span class="ev warn">Nieobecność</span>');
   const open = tasksOf(it.id, it.date).filter((t) => !t.done);
   const hasExam = open.some(isExamTask);
   if (hasExam) tags.push('<span class="ev exam"><i></i>Kolokwium</span>');
@@ -752,12 +753,40 @@ export function openDetail(cid, date, focus) {
   const mc = macOf(base.name);
   if (mc) tags.push(macChip(mc));
 
+  const absDates = absencesOf(cache.plan, cid);
+  const absCount = absDates.length;
+  const absLim = absenceLimit(cache.plan, base);
+  const absToday = isAbsentOn(cache.plan, cid, dk(d));
+  const absCls = absLim !== null ? (absCount > absLim ? " bad" : absCount === absLim ? " warn" : "") : "";
+  const absBar =
+    '<div class="abs-bar">' +
+    '<span class="abs-stat' +
+    absCls +
+    '">Nieobecności: ' +
+    absCount +
+    (absLim !== null ? " / " + absLim : "") +
+    "</span>" +
+    '<div class="abs-ctrl">' +
+    '<button type="button" class="abs-btn' +
+    (absToday ? " on" : "") +
+    '" data-sh="abs:toggle" aria-pressed="' +
+    absToday +
+    '">' +
+    (absToday ? "Nieobecny tego dnia ✓" : "Zaznacz nieobecność") +
+    "</button>" +
+    '<span class="abs-lim">Limit: <button type="button" data-sh="abs:dec" aria-label="Zmniejsz limit nieobecności">−</button><b>' +
+    (absLim !== null ? absLim : "∞") +
+    '</b><button type="button" data-sh="abs:inc" aria-label="Zwiększ limit nieobecności">+</button></span>' +
+    "</div></div>";
+
   const info =
     '<div class="dt-box">' +
     (tags.length ? '<div class="dt-row">' + tags.join("") + "</div>" : "") +
     '<div class="dt-pers"><span>Prowadzący:</span> <b>' +
     esc(c.person || "brak w planie") +
-    '</b></div><button type="button" class="dt-subj" data-sh="subj"><span>Wymagania i notatki przedmiotu</span><b aria-hidden="true">›</b></button></div>';
+    "</b></div>" +
+    absBar +
+    '<button type="button" class="dt-subj" data-sh="subj"><span>Wymagania i notatki przedmiotu</span><b aria-hidden="true">›</b></button></div>';
 
   const rows = list
     .map(
