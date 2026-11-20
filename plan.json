@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795140707090,
+  "rev": 1795140725372,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -575,6 +575,21 @@
       "time": "13:15",
       "url": "",
       "at": 1795140707090,
+      "note": "",
+      "done": false,
+      "cat": "report"
+    },
+    {
+      "id": "kmwocfsl85z0e3",
+      "kind": "onsite",
+      "text": "Sprawozdanie",
+      "sid": "",
+      "cid": "c01",
+      "date": "2026-11-23",
+      "due": "2026-11-23",
+      "time": "08:00",
+      "url": "",
+      "at": 1795140725372,
       "note": "",
       "done": false,
       "cat": "report"
