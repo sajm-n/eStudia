@@ -96,7 +96,7 @@ export function toast(msg, actLabel, act) {
     };
   }
   clearTimeout(toastT);
-  toastT = setTimeout(hideToast, actLabel ? 3000 : 3500);
+  toastT = setTimeout(hideToast, actLabel ? 5500 : 3500);
 }
 
 export function ask(msg, okLabel) {
@@ -120,7 +120,7 @@ export function resolveAsk(val) {
 }
 
 export function change(fn, msg) {
-  const before = cache.plan;
+  const before = clone(cache.plan);
   const p = clone(before);
   try {
     fn(p);
@@ -131,7 +131,11 @@ export function change(fn, msg) {
   }
   if (msg) {
     toast(msg, "Cofnij", () => {
-      try { commit(before); } catch (e) {}
+      try {
+        commit(before);
+        app.render();
+        toast("Cofnięto ✓");
+      } catch (e) {}
     });
   }
   return true;

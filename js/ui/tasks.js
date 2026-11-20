@@ -1012,3 +1012,56 @@ export function toggleTask(id) {
 export function openAlertTask(id) {
   openTask(id);
 }
+
+/* Szybkie okno dodawania zadania (np. z zakładki Przedmioty lub widoku Sesja/Kolokwia) */
+export function openNewTask(opts = {}) {
+  const back = opts.back || null;
+  const cat = opts.cat || "task";
+  ui.ctx = { view: "tknew", back };
+  const title = cat === "exam" ? "Nowe kolokwium" : cat === "report" ? "Nowe sprawozdanie" : "Nowe zadanie";
+  openSheet(
+    title,
+    '<form id="tkNewF" novalidate autocomplete="off">' +
+      taskFieldsHtml({
+        text: "",
+        note: "",
+        url: "",
+        subj: opts.subj || "",
+        due: opts.due || tomorrowDK(),
+        time: opts.time || "",
+        cat,
+      }) +
+      '<div class="acts"><button type="submit" class="btn pri">Dodaj</button><button type="button" class="btn" data-sh="' +
+      (back ? "tkback" : "close") +
+      '">' +
+      (back ? "Wróć" : "Anuluj") +
+      "</button></div></form>"
+  );
+  const f = $("tkNewF");
+  const ctrl = bindTaskForm(f, true);
+  f.onsubmit = (ev) => {
+    ev.preventDefault();
+    const v = ctrl.read(f.querySelector("[data-err]"));
+    if (!v) return;
+    const ok = change((p) => {
+      const t = {
+        id: uid(),
+        sid: applySubject(p, v.subj),
+        cid: "",
+        at: Date.now(),
+        date: "",
+        text: v.text,
+        due: v.due,
+        time: v.time,
+        url: v.url,
+        note: v.note,
+        done: false,
+      };
+      if (v.cat && v.cat !== "task") t.cat = v.cat;
+      if (v.rem) t.rem = v.rem;
+      p.tasks.push(t);
+    }, v.cat === "exam" ? "Dodano kolokwium" : v.cat === "report" ? "Dodano sprawozdanie" : "Dodano zadanie");
+    if (ok) tkBack();
+  };
+}
+

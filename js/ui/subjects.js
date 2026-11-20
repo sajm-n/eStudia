@@ -304,8 +304,8 @@ export function openSubject(name, tab, focus) {
     body =
       (all.length
         ? groups
-        : '<p class="tk-empty">Brak zadań dla tego przedmiotu. Dodasz je w zakładce „Zadania” albo klikając zajęcia na planie.</p>') +
-      '<div class="acts"><button type="button" class="btn" data-sh="close">Zamknij</button></div>';
+        : '<p class="tk-empty">Brak zadań dla tego przedmiotu. Dodasz je poniżej albo klikając zajęcia na planie.</p>') +
+      '<div class="acts"><button type="button" class="btn pri" data-sh="sjadd">+ Dodaj zadanie</button><button type="button" class="btn" data-sh="close">Zamknij</button></div>';
     sub = [
       forms.length ? forms.map((f) => FORM_LABEL(f.type)).join(" · ") : "",
       e.persons.length ? "Prowadzący: " + e.persons.join(", ") : "",

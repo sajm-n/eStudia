@@ -605,7 +605,7 @@ export function renderPlan() {
     return x;
   };
   const deskM = isDesk();
-  const dots = deskM ? taskDots() : {};
+  const dots = taskDots();
   const selMon = wkStart(ui.sel);
   if (!deskM) ui.mcalOpen = false;
 
@@ -1474,3 +1474,86 @@ export function shiftWeek(n) {
     });
   }
 }
+
+/* Dymek podglądu zadań i zakresu kolokwiów po najechaniu na kafelek zajęć na desktopie */
+let tipEl = null;
+let tipCur = null;
+
+function hideTip() {
+  tipCur = null;
+  if (tipEl) tipEl.hidden = true;
+}
+
+function showTip(wb) {
+  if (!isDesk() || ui.shOpen || document.body.classList.contains("mob-dragging")) {
+    hideTip();
+    return;
+  }
+  const cid = wb.dataset.cid;
+  const date = wb.dataset.date;
+  const d = fromDK(date);
+  if (!cid || !d) return;
+  const it = items(d).find((x) => x.id === cid);
+  if (!it) return;
+  const open = tasksOf(it).filter((t) => !t.done);
+  if (!open.length) {
+    hideTip();
+    return;
+  }
+  if (!tipEl) {
+    tipEl = document.createElement("div");
+    tipEl.className = "wb-tip";
+    tipEl.setAttribute("role", "tooltip");
+    tipEl.hidden = true;
+    document.body.appendChild(tipEl);
+  }
+  tipCur = wb;
+  const c = it.c;
+  const sub = fmtT(c.s) + "–" + fmtT(c.e) + (c.room ? " · " + c.room : "");
+  const rows = open
+    .slice(0, 5)
+    .map((t) => {
+      const n = (t.note || "").trim().replace(/\s+/g, " ");
+      return (
+        '<div class="wt-item"><span class="wt-t">' +
+        taskHeadingHtml(t, { omitSubj: true }) +
+        "</span>" +
+        (n ? '<span class="wt-n">' + esc(n) + "</span>" : "") +
+        "</div>"
+      );
+    })
+    .join("");
+  const more = open.length > 5 ? '<span class="wt-n">+ ' + (open.length - 5) + " więcej…</span>" : "";
+  tipEl.innerHTML = "<b>" + esc(c.name) + '</b><span class="wt-sub">' + esc(sub) + '</span><div class="wt-list">' + rows + more + "</div>";
+  tipEl.hidden = false;
+
+  const r = wb.getBoundingClientRect();
+  const tw = tipEl.offsetWidth || 260;
+  const th = tipEl.offsetHeight || 90;
+  let left = r.right + 10;
+  if (left + tw > innerWidth - 12) left = r.left - tw - 10;
+  if (left < 12) left = Math.max(12, innerWidth - tw - 12);
+  let top = r.top;
+  if (top + th > innerHeight - 12) top = Math.max(12, innerHeight - th - 12);
+  tipEl.style.left = Math.round(left) + "px";
+  tipEl.style.top = Math.round(top) + "px";
+}
+
+export function initPlanTooltips() {
+  const list = $("list");
+  if (!list) return;
+  list.addEventListener("pointerover", (e) => {
+    if (e.pointerType === "touch") return;
+    const wb = e.target.closest(".wb[data-cid]");
+    if (!wb) return;
+    if (wb !== tipCur) showTip(wb);
+  });
+  list.addEventListener("pointerout", (e) => {
+    if (!tipCur) return;
+    const rel = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest(".wb[data-cid]") : null;
+    if (rel !== tipCur) hideTip();
+  });
+  list.addEventListener("pointerdown", hideTip);
+  window.addEventListener("scroll", hideTip, true);
+}
+

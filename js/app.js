@@ -7,9 +7,10 @@ import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushSt
 import { $, isDesk, mqD, dl, lsSet, setMsg, getTheme, applyTheme, ui, app } from "./state.js";
 import { closeSheet, toast, ask, resolveAsk, change, playGo, popCb } from "./ui/sheet.js";
 import { renderSubjects, openSubject, ensureSubject, flushSave } from "./ui/subjects.js";
-import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, tkBack, toggleTask, openAlertTask } from "./ui/tasks.js";
+import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, openNewTask, subjValueForName, tkBack, toggleTask, openAlertTask } from "./ui/tasks.js";
 import {
   renderPlan,
+  initPlanTooltips,
   updateProgress,
   tickClock,
   posMcal,
@@ -158,11 +159,11 @@ function shAction(a) {
       const cls = cache.plan.classes.find((x) => x.id === cid);
       if (!cls) return;
       if (id === "toggle") {
+        const wasAbs = (cache.plan.absences || []).some((x) => x.cid === cid && x.date === date);
         change((p) => {
           const list = Array.isArray(p.absences) ? p.absences : [];
-          const exists = list.some((x) => x.cid === cid && x.date === date);
-          p.absences = exists ? list.filter((x) => !(x.cid === cid && x.date === date)) : list.concat([{ cid, date }]);
-        });
+          p.absences = wasAbs ? list.filter((x) => !(x.cid === cid && x.date === date)) : list.concat([{ cid, date }]);
+        }, wasAbs ? "Usunięto nieobecność" : "Zaznaczono nieobecność");
         rerenderDetail('[data-sh="abs:toggle"]');
       } else if (id === "inc" || id === "dec") {
         const cur = absenceLimit(cache.plan, cls);
@@ -213,6 +214,9 @@ function shAction(a) {
       break;
     case "newsem":
       openNewSemester();
+      break;
+    case "sjadd":
+      openNewTask({ subj: subjValueForName(ui.ctx.sname), back: { view: "subj", sname: ui.ctx.sname } });
       break;
     case "subj": {
       const c = cache.plan.classes.find((x) => x.id === cid);
@@ -613,6 +617,7 @@ applyTheme(getTheme());
 initOlForm();
 initTaskFilters();
 initDrag();
+initPlanTooltips();
 render();
 handleDeepLink();
 

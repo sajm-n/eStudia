@@ -619,4 +619,22 @@ body.mob-dragging .scroller{overflow:hidden !important;touch-action:none}
 .tk-url-btn{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px;padding:7px 12px;border-radius:10px;background:color-mix(in srgb,var(--ac) 12%,var(--card));border:1px solid color-mix(in srgb,var(--ac) 35%,var(--bd));color:var(--ac);font-size:13px;font-weight:700;text-decoration:none}
 .tk-url-btn:hover{background:color-mix(in srgb,var(--ac) 20%,var(--card))}
 
+/* ===== v2.7a: Kropki zadań w mobilnym kalendarzu, przycisk Cofnij w toascie, dymek zadań na desktopie ===== */
+.cal .cg button.tk::before{content:"";position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
+.cal .cg button.tk.late::before{background:var(--bad)}
+.cal .cg button.tk.exam::before{background:var(--exam)}
+.cal .cg button.on.tk::before{background:var(--acx)}
+.toast button{background:color-mix(in srgb,var(--bg) 16%,transparent);border-radius:8px;padding:4px 10px;text-decoration:none;font-size:13px;transition:background-color .15s}
+.toast button:hover{background:color-mix(in srgb,var(--bg) 28%,transparent)}
+
+.wb-tip{position:fixed;z-index:90;pointer-events:none;max-width:290px;padding:9px 12px;border-radius:11px;background:var(--card);color:var(--tx);border:1px solid var(--bd);box-shadow:0 12px 30px rgba(0,0,0,.28);font-size:12.5px;line-height:1.35}
+.wb-tip[hidden]{display:none}
+.wb-tip b{display:block;font-size:13px;font-weight:700;margin-bottom:2px}
+.wb-tip .wt-sub{display:block;color:var(--mut);font-size:11.5px;margin-bottom:6px}
+.wb-tip .wt-list{display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--bd);padding-top:6px}
+.wb-tip .wt-item{display:flex;flex-direction:column;gap:1px}
+.wb-tip .wt-t{font-weight:600;color:var(--tx)}
+.wb-tip .wt-n{font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+
 
