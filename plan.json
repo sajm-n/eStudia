@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795169504522,
+  "rev": 1795169524090,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -600,5 +600,16 @@
   ],
   "absLimits": {
     "c04": 2
-  }
+  },
+  "dayOverrides": [
+    {
+      "date": "2026-11-11",
+      "off": true,
+      "note": "Przeniesiono na 13 listopada"
+    },
+    {
+      "date": "2026-11-13",
+      "fromDate": "2026-11-11"
+    }
+  ]
 }
