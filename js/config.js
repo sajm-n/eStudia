@@ -1,6 +1,6 @@
 /* ===== Stałe i konfiguracja aplikacji eStudia ===== */
 
-export const APP_VERSION = "2.5.2";
+export const APP_VERSION = "2.6.0";
 
 export const TYPES = { w: "Wykład", l: "Laboratorium", c: "Ćwiczenia", x: "Inne" };
 export const TYPE_ORDER = "wlcx";
@@ -76,6 +76,7 @@ export const PUSH_BRANCH = "push-state";
 
 /* Domyślne reguły powiadomień */
 export const NOTIF_DEF = {
+  task: { m: "day", days: 1, time: "18:00" },
   onsite: { m: "day", days: 1, time: "18:00" },
   online: { m: "rel", min: 1440 },
 };

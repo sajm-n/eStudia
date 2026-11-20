@@ -86,7 +86,6 @@ export const app = {
   flushSave() {},
   openDetail() {},
   openTask() {},
-  openOnsiteTask() {},
   openSubject() {},
   openForm() {},
   openOverride() {},

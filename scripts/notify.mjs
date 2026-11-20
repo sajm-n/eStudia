@@ -4,7 +4,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { validatePlan, taskAlert, taskTrigger, fromDK, fmtT, day0, same } from "../js/core.js";
+import { validatePlan, taskAlert, taskTrigger, taskSubjectName, taskTitle, taskCat, fromDK, fmtT, day0, same } from "../js/core.js";
 import { VAPID_PUBLIC } from "../js/config.js";
 import { sendPush, resolveVapidPrivate } from "./webpush.mjs";
 
@@ -49,23 +49,21 @@ if (process.argv.includes("--check")) {
 const dl = (d) => d.toLocaleDateString("pl-PL", { day: "numeric", month: "long" });
 
 function buildTexts(plan, t) {
-  const label =
-    t.kind === "online"
-      ? (plan.subjects.find((s) => s.id === t.sid) || {}).name || "Online"
-      : (plan.classes.find((c) => c.id === t.cid) || {}).name || "Zajęcia";
+  const sub = taskSubjectName(plan, t);
+  const cat = taskCat(t);
+  const hasTx = !!(typeof t.text === "string" && t.text.trim());
+  const name = hasTx ? t.text.trim() : sub || taskTitle(t);
+  const noteSnip = (t.note || "").trim().replace(/\s+/g, " ").slice(0, 90);
+  const prefix = cat === "exam" ? "Kolokwium" : cat === "report" ? "Sprawozdanie" : cat === "project" ? "Projekt" : "Zadanie";
   const d = fromDK(t.due);
   const td = day0(now);
   const tm = new Date(td.getFullYear(), td.getMonth(), td.getDate() + 1);
   const w = same(d, td) ? "dziś" : same(d, tm) ? "jutro" : dl(d);
-  if (t.kind === "online") {
-    return {
-      title: "!!! Niewykonane zadanie online: " + t.text + " !!!",
-      body: label + " · termin: " + w + " o " + fmtT(t.time || "23:59"),
-    };
-  }
+  const dayPrep = w === "dziś" ? "na dziś" : w === "jutro" ? "na jutro" : "na " + w;
+  const whenFull = w + (t.time ? " o " + fmtT(t.time) : "");
   return {
-    title: "!!! Niewykonane zadanie " + (w === "dziś" ? "na dziś" : w === "jutro" ? "na jutro" : "na " + w) + ": " + t.text + " !!!",
-    body: label + (t.time ? " · zajęcia o " + fmtT(t.time) : ""),
+    title: "!!! " + (cat === "task" ? "Niewykonane zadanie " : prefix + " ") + dayPrep + ": " + name + " !!!",
+    body: [sub && hasTx ? sub : "", "termin: " + whenFull, noteSnip].filter(Boolean).join(" · "),
   };
 }
 

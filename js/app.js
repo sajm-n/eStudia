@@ -7,7 +7,7 @@ import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushSt
 import { $, isDesk, mqD, dl, lsSet, setMsg, getTheme, applyTheme, ui, app } from "./state.js";
 import { closeSheet, toast, ask, resolveAsk, change, playGo, popCb } from "./ui/sheet.js";
 import { renderSubjects, openSubject, ensureSubject, flushSave } from "./ui/subjects.js";
-import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, openOnsiteTask, osBack, toggleTask, openAlertTask } from "./ui/tasks.js";
+import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, tkBack, toggleTask, openAlertTask } from "./ui/tasks.js";
 import {
   renderPlan,
   updateProgress,
@@ -84,7 +84,6 @@ Object.assign(app, {
   flushSave,
   openDetail,
   openTask,
-  openOnsiteTask,
   openSubject,
   openForm,
   openOverride,
@@ -125,8 +124,22 @@ function shAction(a) {
       openSubject(ui.ctx.sname, "tasks", '[data-sh="stg:' + id + '"]');
       $("sheet").scrollTop = st;
       popCb(id);
-    } else if (k === "sto") openTask(id);
-    else if (k === "oe") openOnsiteTask(id);
+    } else if (k === "sto") openTask(id, { back: { view: "subj", sname: ui.ctx.sname } });
+    else if (k === "oe") openTask(id, { back: { view: "detail", cid, date } });
+    else if (k === "tgo") {
+      const [tcid, tdate] = id.split("|");
+      const d = fromDK(tdate);
+      if (d) {
+        ui.sel = d;
+        ui.mo = new Date(d.getFullYear(), d.getMonth(), 1);
+        ui.mcalOpen = false;
+        ui.tab = "plan";
+        ui.editMode = false;
+        lsSet(TAB_KEY, "plan");
+        openDetail(tcid, tdate);
+        render();
+      }
+    }
     else if (k === "tg") {
       change((p) => {
         const t = p.tasks.find((x) => x.id === id);
@@ -222,8 +235,8 @@ function shAction(a) {
         setMsg("ntStat", ok ? "Wysłano powiadomienie testowe." : "Nie udało się wysłać powiadomienia.", ok ? "ok" : "bad")
       );
       break;
-    case "osback":
-      osBack();
+    case "tkback":
+      tkBack();
       break;
     case "dfreset":
       if (change((p) => { p.notif = clone(NOTIF_DEF); })) {
@@ -234,10 +247,12 @@ function shAction(a) {
     case "oldel": {
       const t = cache.plan.tasks.find((x) => x.id === ui.ctx.tid);
       if (!t) break;
-      closeSheet();
+      const back = ui.ctx.back;
       change((p) => {
         p.tasks = p.tasks.filter((x) => x.id !== t.id);
       }, "Usunięto zadanie");
+      ui.ctx = { back };
+      tkBack();
       break;
     }
     case "yes":
@@ -397,11 +412,6 @@ document.addEventListener("keydown", (e) => {
     } else if (k === "t" || k === "T") goToday();
   } else if (ui.tab === "tasks" && (k === "n" || k === "N")) {
     e.preventDefault();
-    if (ui.tkView === "onsite") {
-      ui.tkView = "all";
-      lsSet(TV_KEY, "all");
-      render();
-    }
     if (!ui.olOpen) toggleOl(true);
   }
 });
@@ -436,11 +446,9 @@ document.addEventListener("click", (e) => {
   }
   if (k === "tab") { setTab(v); return; }
   if (k === "goTasks") {
-    ui.tkView = "all";
     ui.tkQuery = "";
     ui.tkSubj = "";
     ui.tkCat = "";
-    lsSet(TV_KEY, "all");
     setTab("tasks");
     return;
   }
@@ -466,10 +474,7 @@ document.addEventListener("click", (e) => {
     ui.mo = new Date(ui.sel.getFullYear(), ui.sel.getMonth(), 1);
     ui.mcalOpen = false;
   } else if (k === "edit") ui.editMode = !ui.editMode;
-  else if (k === "tv") {
-    ui.tkView = v === "online" || v === "onsite" ? v : "all";
-    lsSet(TV_KEY, ui.tkView);
-  } else if (k === "ol") { toggleOl(!ui.olOpen); return; }
+  else if (k === "ol") { toggleOl(!ui.olOpen); return; }
   else if (k === "hd") {
     ui.hideDone = !ui.hideDone;
     lsSet(HD_KEY, ui.hideDone ? "1" : "0");

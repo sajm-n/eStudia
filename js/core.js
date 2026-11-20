@@ -90,13 +90,16 @@ export function ruleStart(r, d, end) {
 }
 
 /* Reguła obowiązująca dla zadania: własna albo domyślna z ustawień */
-export const ruleOf = (t, notif) => t.rem || (notif && notif[t.kind]) || NOTIF_DEF[t.kind];
+export const ruleOf = (t, notif) =>
+  (t && t.rem) ||
+  (notif && (notif.task || (t && t.kind && notif[t.kind]) || notif.onsite || notif.online)) ||
+  NOTIF_DEF.task;
 
 export function taskTrigger(t, notif) {
   if (!t.due) return null;
   const d = fromDK(t.due);
   if (!d) return null;
-  const p = (t.time || (t.kind === "online" ? "23:59" : "00:00")).split(":").map(Number);
+  const p = (t.time || "23:59").split(":").map(Number);
   const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), p[0], p[1]);
   let start = ruleStart(ruleOf(t, notif), d, end);
   if (start > end) start = end; /* powiadomienie nie może przyjść po terminie */
@@ -115,7 +118,7 @@ export function taskAlert(t, now, notif) {
 
 export function isLate(t, now = new Date()) {
   if (t.done || !t.due) return false;
-  const end = endOf(t.due, t.time || (t.kind === "online" ? "23:59" : "00:00"));
+  const end = endOf(t.due, t.time || "23:59");
   return !!end && end < now;
 }
 
@@ -142,6 +145,32 @@ export function isExamTask(t) {
   if (c === "exam") return true;
   if (c !== "task") return false;
   return /\b(kolos\w*|kolokwi\w*|egzamin\w*)\b/i.test(String(t && t.text ? t.text : ""));
+}
+
+/* Nazwa przedmiotu przypisanego do zadania (przez sid lub starsze powiązanie cid) */
+export function taskSubjectName(plan, t) {
+  if (!plan || !t) return "";
+  if (t.sid) {
+    const s = (plan.subjects || []).find((x) => x.id === t.sid);
+    if (s && s.name) return s.name;
+  }
+  if (t.cid) {
+    const c = (plan.classes || []).find((x) => x.id === t.cid);
+    if (c && c.name) return c.name;
+  }
+  return "";
+}
+
+/* Tytuł wyświetlany dla zadania (kolokwium i sprawozdanie mogą nie mieć nazwy) */
+export function taskTitle(t) {
+  if (!t) return "Zadanie";
+  const tx = typeof t.text === "string" ? t.text.trim() : "";
+  if (tx) return tx;
+  const c = taskCat(t);
+  if (c === "exam") return "Kolokwium";
+  if (c === "report") return "Sprawozdanie";
+  if (c === "project") return "Projekt";
+  return "Zadanie";
 }
 
 /* Walidacja i normalizacja planu (import, odpowiedź z GitHuba, każdy zapis) */
@@ -266,15 +295,18 @@ export function validatePlan(raw) {
     });
   }
 
-  /* Zadania: "onsite" (stacjonarne) i "online"; powiązania z przedmiotem (sid) i zajęciami (cid) są opcjonalne */
+  /* Zadania niezależne od zajęć; powiązania z przedmiotem (sid) i zajęciami (cid) są opcjonalne.
+     Dla kolokwium (exam) i sprawozdania (report) nazwa (text) może być pusta — kluczowy jest opis (note). */
   const tids = new Set();
   const tasks = [];
   for (const x of tks) {
     if (!x || typeof x !== "object") continue;
-    const kind = x.kind === "online" ? "online" : x.kind === "onsite" ? "onsite" : null;
-    if (!kind) continue;
+    const cat =
+      typeof x.cat === "string" && x.cat !== "task" && Object.prototype.hasOwnProperty.call(TASK_TYPES, x.cat)
+        ? x.cat
+        : "";
     const text = str(x.text, 300);
-    if (!text) continue;
+    if (!text && cat !== "exam" && cat !== "report") continue;
     let due = "";
     if (x.due !== undefined && x.due !== null && x.due !== "") {
       if (!fromDK(x.due)) continue;
@@ -285,7 +317,6 @@ export function validatePlan(raw) {
     tids.add(id);
     const t = {
       id,
-      kind,
       text,
       sid: sids.has(x.sid) ? x.sid : "",
       cid: ids.has(x.cid) ? x.cid : "",
@@ -301,15 +332,11 @@ export function validatePlan(raw) {
       const tm = normT(x.time);
       if (tm) t.time = tm;
     }
-    if (kind === "online") {
-      const u = str(x.url, 300);
-      if (/^https?:\/\/\S+$/i.test(u)) t.url = u;
-    }
+    const u = str(x.url, 300);
+    if (/^https?:\/\/\S+$/i.test(u)) t.url = u;
     const rem = normRule(x.rem, true);
     if (rem) t.rem = rem; /* własny termin powiadomienia; brak = reguła domyślna z ustawień */
-    if (typeof x.cat === "string" && x.cat !== "task" && Object.prototype.hasOwnProperty.call(TASK_TYPES, x.cat)) {
-      t.cat = x.cat;
-    }
+    if (cat) t.cat = cat;
     tasks.push(t);
   }
 
@@ -337,16 +364,17 @@ export function validatePlan(raw) {
   const atids = new Set();
   for (const x of archRaw) {
     if (!x || typeof x !== "object") continue;
-    const kind = x.kind === "online" ? "online" : x.kind === "onsite" ? "onsite" : null;
-    if (!kind) continue;
+    const cat =
+      typeof x.cat === "string" && x.cat !== "task" && Object.prototype.hasOwnProperty.call(TASK_TYPES, x.cat)
+        ? x.cat
+        : "";
     const text = str(x.text, 300);
-    if (!text) continue;
+    if (!text && cat !== "exam" && cat !== "report") continue;
     let id = okId(x.id) ? x.id : uid();
     while (atids.has(id)) id = uid();
     atids.add(id);
     const t = {
       id,
-      kind,
       text,
       sid: sids.has(x.sid) ? x.sid : "",
       cid: ids.has(x.cid) ? x.cid : "",
@@ -358,9 +386,9 @@ export function validatePlan(raw) {
       note: str(x.note, 1000),
       done: true,
     };
-    if (typeof x.cat === "string" && x.cat !== "task" && Object.prototype.hasOwnProperty.call(TASK_TYPES, x.cat)) {
-      t.cat = x.cat;
-    }
+    const u = str(x.url, 300);
+    if (/^https?:\/\/\S+$/i.test(u)) t.url = u;
+    if (cat) t.cat = cat;
     if (typeof x.label === "string" && x.label.trim()) t.label = str(x.label, 120);
     archivedTasks.push(t);
   }
@@ -409,11 +437,13 @@ export function validatePlan(raw) {
   }
   const dayOverrides = [...dovByDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 
-  /* Domyślne terminy powiadomień (osobno dla zadań stacjonarnych i online); brak lub błąd = wartości startowe */
+  /* Domyślny termin powiadomień o zadaniach (z zachowaniem zgodności wstecznej kluczy onsite/online) */
   const rn = raw.notif && typeof raw.notif === "object" ? raw.notif : {};
+  const defRule = normRule(rn.task) || normRule(rn.onsite) || normRule(rn.online) || clone(NOTIF_DEF.task);
   const notif = {
-    onsite: normRule(rn.onsite) || clone(NOTIF_DEF.onsite),
-    online: normRule(rn.online) || clone(NOTIF_DEF.online),
+    task: defRule,
+    onsite: normRule(rn.onsite) || clone(defRule),
+    online: normRule(rn.online) || clone(defRule),
   };
 
   const outPlan = {
@@ -582,4 +612,73 @@ export function nextOccurrence(plan, cid, after) {
     if (it) return { date: d, s: it.c.s };
   }
   return null;
+}
+
+/* Najbliższe (od podanego dnia włącznie) nieodwołane zajęcia danego przedmiotu: {date, dk, s, e, cid} albo null */
+export function nextOccurrenceBySubject(plan, subjectName, fromDate = new Date()) {
+  const target = String(subjectName || "").trim().toLowerCase();
+  if (!target || !plan || !Array.isArray(plan.classes)) return null;
+  const startDay = day0(fromDate);
+  const nowMin = fromDate.getHours() * 60 + fromDate.getMinutes();
+  for (let i = 0; i <= 190; i++) {
+    const d = new Date(startDay.getFullYear(), startDay.getMonth(), startDay.getDate() + i);
+    const list = itemsFor(plan, d);
+    for (const it of list) {
+      if (it.off) continue;
+      if (String(it.c.name || "").trim().toLowerCase() !== target) continue;
+      if (i === 0 && mn(it.c.e) <= nowMin) continue;
+      return { date: d, dk: dk(d), s: it.c.s, e: it.c.e, cid: it.id };
+    }
+  }
+  return null;
+}
+
+/* Sprawdza, czy niezależne zadanie przypada w czasie trwania konkretnych zajęć */
+export function taskMatchesClass(plan, t, item) {
+  if (!plan || !t || !item || !item.c) return false;
+  const date = item.date;
+  const cid = item.id;
+  const c = item.c;
+  /* Starsze zadania bez daty, ale z jawnie podpiętym cid */
+  if (!t.due) return !!(t.cid && t.cid === cid && (!t.date || t.date === date));
+  if (t.due !== date) return false;
+
+  const clsName = String(c.name || "").trim().toLowerCase();
+  const taskSubj = taskSubjectName(plan, t).trim().toLowerCase();
+
+  /* Dopasowanie po czasie trwania zajęć (główny mechanizm v2.6) */
+  if (t.time) {
+    const tm = mn(t.time);
+    const s = mn(c.s);
+    const e = mn(c.e);
+    if (tm >= s && tm <= e) {
+      /* Jeśli zadanie ma określony przedmiot, musi pasować do nazwy zajęć */
+      if (!taskSubj || taskSubj === clsName) return true;
+    }
+    return false;
+  }
+
+  /* Zadanie bez godziny nie przypina się automatycznie do zajęć, chyba że było jawnie podpięte pod cid w tym dniu */
+  return !!(t.cid && t.cid === cid && (!t.date || t.date === date));
+}
+
+/* Wszystkie zadania przypadające w czasie trwania danej pozycji zajęć (item = element z itemsFor) */
+export function tasksForClass(plan, item) {
+  if (!plan || !Array.isArray(plan.tasks) || !item) return [];
+  return plan.tasks
+    .filter((t) => taskMatchesClass(plan, t, item))
+    .sort(
+      (a, b) =>
+        a.done - b.done ||
+        (a.due ? a.due + (a.time || "23:59") : "9").localeCompare(b.due ? b.due + (b.time || "23:59") : "9")
+    );
+}
+
+/* Znajduje zajęcia z planu, w czasie których przypada dane zadanie (albo null) */
+export function classForTask(plan, t) {
+  if (!plan || !t || !t.due) return null;
+  const d = fromDK(t.due);
+  if (!d) return null;
+  const list = itemsFor(plan, d);
+  return list.find((it) => !it.off && taskMatchesClass(plan, t, it)) || list.find((it) => taskMatchesClass(plan, t, it)) || null;
 }

@@ -83,82 +83,53 @@ function dfRead(kind) {
   return tm ? { m: "day", days: n, time: tm } : null;
 }
 
-function dfExample(kind, r) {
+function dfExample(r) {
   const x = day0(new Date());
   let end = new Date(x.getFullYear(), x.getMonth(), x.getDate() + 3, 10, 0);
   while (wd(end) !== 0) end = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1, 10, 0);
   let s = ruleStart(r, day0(end), end);
   if (s > end) s = end;
-  return (
-    "Przykład: " +
-    (kind === "onsite" ? "zajęcia" : "termin") +
-    " " +
-    WD_IN[0] +
-    " o 10:00 → powiadomienie " +
-    WD_IN[wd(s)] +
-    " o " +
-    fmtT(hm(s)) +
-    "."
-  );
+  return "Przykład: termin " + WD_IN[0] + " o 10:00 → powiadomienie " + WD_IN[wd(s)] + " o " + fmtT(hm(s)) + ".";
 }
 
 export function dfRender() {
   const box = $("dfBox");
   if (!box) return;
   const n = cache.plan.notif;
-  const rows = [
-    ["onsite", "Zadania stacjonarne"],
-    ["online", "Zadania online"],
-  ];
-  box.innerHTML = rows
-    .map((o) => {
-      const r = n[o[0]];
-      return (
-        '<div class="dfb"><label class="fl">' +
-        o[1] +
-        '<select name="' +
-        o[0] +
-        '">' +
-        dfSelect(r) +
-        '</select></label><label class="fl" data-tm="' +
-        o[0] +
-        '"' +
-        (r.m === "day" ? "" : " hidden") +
-        '>Godzina powiadomienia<input type="time" name="' +
-        o[0] +
-        'T" value="' +
-        esc(r.m === "day" ? r.time : "18:00") +
-        '"></label><p class="hint" data-ex="' +
-        o[0] +
-        '">' +
-        esc(dfExample(o[0], r)) +
-        "</p></div>"
-      );
-    })
-    .join("");
-  const save = (kind) => {
+  const r = n.task || n.onsite || n.online;
+  box.innerHTML =
+    '<div class="dfb"><label class="fl">Domyślne powiadomienie o zadaniach<select name="task">' +
+    dfSelect(r) +
+    '</select></label><label class="fl" data-tm="task"' +
+    (r.m === "day" ? "" : " hidden") +
+    '>Godzina powiadomienia<input type="time" name="taskT" value="' +
+    esc(r.m === "day" ? r.time : "18:00") +
+    '"></label><p class="hint" data-ex="task">' +
+    esc(dfExample(r)) +
+    "</p></div>";
+  const save = () => {
     const E = $("dfF").elements;
-    const r = dfRead(kind);
-    box.querySelector('[data-tm="' + kind + '"]').hidden = E[kind].value.startsWith("rel:");
-    if (!r) {
+    const rule = dfRead("task");
+    box.querySelector('[data-tm="task"]').hidden = E.task.value.startsWith("rel:");
+    if (!rule) {
       setMsg("dfMsg", "Podaj godzinę powiadomienia.", "bad");
       return;
     }
-    box.querySelector('[data-ex="' + kind + '"]').textContent = dfExample(kind, r);
-    if (JSON.stringify(cache.plan.notif[kind]) === JSON.stringify(r)) {
+    box.querySelector('[data-ex="task"]').textContent = dfExample(rule);
+    if (JSON.stringify(cache.plan.notif.task) === JSON.stringify(rule)) {
       if ($("dfMsg").classList.contains("bad")) setMsg("dfMsg", "");
       return;
     }
     const ok = change((p) => {
-      p.notif[kind] = r;
+      p.notif.task = rule;
+      p.notif.onsite = Object.assign({}, rule);
+      p.notif.online = Object.assign({}, rule);
     });
     setMsg("dfMsg", ok ? "Zapisano ✓" : "Nie udało się zapisać.", ok ? "ok" : "bad");
   };
-  for (const kind of ["onsite", "online"]) {
-    const E = $("dfF").elements;
-    E[kind].onchange = () => save(kind);
-    E[kind + "T"].onchange = () => save(kind);
-  }
+  const E = $("dfF").elements;
+  E.task.onchange = save;
+  E.taskT.onchange = save;
 }
 
 export function openSettings() {

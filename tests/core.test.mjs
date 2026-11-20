@@ -19,6 +19,11 @@ import {
   absenceLimit,
   dayOverrideOf,
   dayOverrideTarget,
+  taskTitle,
+  taskSubjectName,
+  tasksForClass,
+  classForTask,
+  nextOccurrenceBySubject,
   isLate,
   fromDK,
   dk,
@@ -272,3 +277,53 @@ test("dayOverrides (nadpisanie, zamiana, dzień wolny) oraz jednorazowe przenies
   assert.equal(moved.c.s, "14:00");
   assert.equal(moved.c.e, "17:15");
 });
+
+test("v2.6: niezależne zadania, dopasowanie czasowe do zajęć, kolokwium/sprawozdanie bez nazwy", () => {
+  const raw = {
+    ...DEFAULT_PLAN,
+    subjects: [
+      { id: "s1", name: "Podstawy programowania", desc: "", req: "", forms: {}, mac: "" },
+      { id: "s2", name: "Matematyka I", desc: "", req: "", forms: {}, mac: "" },
+    ],
+    tasks: [
+      // Kolokwium bez nazwy, z samym opisem, w godzinach zajęć c01 (pon 08:00-11:15)
+      { id: "tex", cat: "exam", text: "", note: "Pętle, tablice, wskaźniki", sid: "s1", due: "2026-11-23", time: "08:30", done: false },
+      // Sprawozdanie bez nazwy z linkiem
+      { id: "trep", cat: "report", text: "", note: "Lab 5", url: "https://example.com/lab5", sid: "s1", due: "2026-11-23", time: "09:00", done: false },
+      // Zadanie bez nazwy typu task — powinno zostać odrzucone
+      { id: "tbad", text: "", due: "2026-11-23", done: false },
+      // Zadanie z innego przedmiotu w tych samych godzinach — nie powinno przypiąć się do c01
+      { id: "tother", text: "Zadania z całek", sid: "s2", due: "2026-11-23", time: "09:00", done: false },
+      // Zadanie całodniowe (bez godziny) — nie powinno przypinać się do zajęć
+      { id: "tallday", text: "Przeczytać rozdział 2", sid: "s1", due: "2026-11-23", time: "", done: false },
+      // Zadanie bez przedmiotu w godzinach c01 — powinno zostać wyłapane przez c01
+      { id: "tnosubj", text: "Oddać pendrive", sid: "", due: "2026-11-23", time: "10:00", done: false },
+    ],
+  };
+  const v = validatePlan(raw);
+  assert.equal(v.ok, true);
+  const p = v.plan;
+
+  assert.equal(p.tasks.some((t) => t.id === "tex"), true);
+  assert.equal(p.tasks.some((t) => t.id === "trep"), true);
+  assert.equal(p.tasks.some((t) => t.id === "tbad"), false);
+  assert.equal(p.tasks.find((t) => t.id === "trep").url, "https://example.com/lab5");
+
+  assert.equal(taskTitle(p.tasks.find((t) => t.id === "tex")), "Kolokwium");
+  assert.equal(taskTitle(p.tasks.find((t) => t.id === "trep")), "Sprawozdanie");
+  assert.equal(taskSubjectName(p, p.tasks.find((t) => t.id === "tex")), "Podstawy programowania");
+
+  const mon = itemsFor(p, fromDK("2026-11-23"));
+  const c01 = mon.find((x) => x.id === "c01");
+  const matched = tasksForClass(p, c01).map((t) => t.id);
+  assert.deepEqual(matched, ["tex", "trep", "tnosubj"]);
+
+  assert.equal(classForTask(p, p.tasks.find((t) => t.id === "tex")).id, "c01");
+  assert.equal(classForTask(p, p.tasks.find((t) => t.id === "tallday")), null);
+
+  const nextMath = nextOccurrenceBySubject(p, "Matematyka I", new Date(2026, 10, 23, 8, 0));
+  assert.ok(nextMath);
+  assert.equal(nextMath.dk, "2026-11-24");
+  assert.equal(nextMath.s, "11:30");
+});
+

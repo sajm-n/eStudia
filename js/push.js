@@ -3,19 +3,12 @@
    Workflow GitHub Actions (.github/workflows/notify.yml) wysyła powiadomienia na zapisane urządzenia. */
 
 import { SEEN_KEY, VAPID_PUBLIC, PUSH_FILE, PUSH_STATE_FILE, PUSH_BRANCH, PUSH_KEY, PUSHVAPID_KEY } from "./config.js";
-import { day0, same, fromDK, fmtT, taskAlert, taskTrigger } from "./core.js";
+import { day0, same, fromDK, fmtT, taskAlert, taskTrigger, taskSubjectName, taskTitle, taskCat } from "./core.js";
 import { cfg, cache, ghFile, b64e, b64d } from "./sync.js";
 import { $, esc, dl, hm, lsSet } from "./state.js";
 
-const subjName = (sid) => {
-  const s = cache.plan.subjects.find((x) => x.id === sid);
-  return s ? s.name : "";
-};
-
 export function taskLabel(t) {
-  if (t.kind === "online") return subjName(t.sid) || "Online";
-  const c = cache.plan.classes.find((x) => x.id === t.cid);
-  return c ? c.name : "Zajęcia";
+  return taskSubjectName(cache.plan, t);
 }
 
 export function whenWord(t) {
@@ -25,32 +18,36 @@ export function whenWord(t) {
   return same(d, td) ? "dziś" : same(d, tm) ? "jutro" : dl(d);
 }
 
-/* Treść: stacjonarne "na jutro", online z terminem w godzinach */
+/* Ujednolicona treść powiadomienia dla zadania / kolokwium / sprawozdania */
 export function alertTexts(a) {
   const t = a.t;
   const w = whenWord(t);
+  const sub = taskLabel(t);
+  const cat = taskCat(t);
+  const hasTx = !!(typeof t.text === "string" && t.text.trim());
+  const name = hasTx ? t.text.trim() : sub || taskTitle(t);
+  const noteSnip = (t.note || "").trim().replace(/\s+/g, " ").slice(0, 90);
+  const prefix = cat === "exam" ? "Kolokwium" : cat === "report" ? "Sprawozdanie" : cat === "project" ? "Projekt" : "Zadanie";
+  const whenFull = w + (t.time ? " o " + fmtT(t.time) : "");
+
   if (a.s === "over") {
     return {
-      title: "!!! Zadanie po terminie: " + t.text + " !!!",
-      body: taskLabel(t) + " · termin minął (" + dl(fromDK(t.due)) + (t.time ? ", " + fmtT(t.time) : "") + ")",
+      title: "!!! " + prefix + " po terminie: " + name + " !!!",
+      body: [sub && hasTx ? sub : "", "termin minął (" + dl(fromDK(t.due)) + (t.time ? ", " + fmtT(t.time) : "") + ")"]
+        .filter(Boolean)
+        .join(" · "),
       line: "po terminie (" + dl(fromDK(t.due)) + ")",
     };
   }
-  if (t.kind === "online") {
-    return {
-      title: "!!! Niewykonane zadanie online: " + t.text + " !!!",
-      body: taskLabel(t) + " · termin: " + w + " o " + fmtT(t.time || "23:59"),
-      line: "termin: " + w + " o " + fmtT(t.time || "23:59"),
-    };
-  }
+  const dayPrep = w === "dziś" ? "na dziś" : w === "jutro" ? "na jutro" : "na " + w;
   return {
-    title: "!!! Niewykonane zadanie " + (w === "dziś" ? "na dziś" : w === "jutro" ? "na jutro" : "na " + w) + ": " + t.text + " !!!",
-    body: taskLabel(t) + (t.time ? " · zajęcia o " + fmtT(t.time) : ""),
-    line: "zajęcia: " + w + (t.time ? ", " + fmtT(t.time) : ""),
+    title: "!!! " + (cat === "task" ? "Niewykonane zadanie " : prefix + " ") + dayPrep + ": " + name + " !!!",
+    body: [sub && hasTx ? sub : "", "termin: " + whenFull, noteSnip].filter(Boolean).join(" · "),
+    line: "termin: " + whenFull,
   };
 }
 
-const tkKey = (t) => (t.due ? t.due + (t.time || "00:00") : "9");
+const tkKey = (t) => (t.due ? t.due + (t.time || "23:59") : "9");
 
 export function activeAlerts() {
   const n = new Date();

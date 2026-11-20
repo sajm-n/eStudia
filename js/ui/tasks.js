@@ -1,21 +1,33 @@
-/* ===== Centrum zadań (wszystkie, stacjonarne i online), filtry, typy oraz termin powiadomienia ===== */
+/* ===== Centrum zadań (ujednolicone, niezależne od zajęć), filtry, typy oraz termin powiadomienia ===== */
 
 import { GROUPS, MAC_TXT, TASK_TYPES, TASK_TYPE_PAIRS } from "../config.js";
-import { day0, dk, fromDK, normT, fmtT, uid, endOf, ruleOf, ruleStart, isLate, taskGroup, taskCat, isExamTask } from "../core.js";
+import {
+  day0,
+  dk,
+  fromDK,
+  normT,
+  fmtT,
+  uid,
+  endOf,
+  ruleOf,
+  ruleStart,
+  isLate,
+  taskGroup,
+  taskCat,
+  isExamTask,
+  taskSubjectName,
+  taskTitle,
+  tasksForClass,
+  classForTask,
+  nextOccurrenceBySubject,
+} from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, reduced, dlong, hm, fmtLocal, nameLc, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, change, popCb } from "./sheet.js";
 import { macOf } from "./subjects.js";
 
-const subjName = (sid) => {
-  const s = cache.plan.subjects.find((x) => x.id === sid);
-  return s ? s.name : "";
-};
-
 export function taskLabelOf(t) {
-  return t.kind === "online"
-    ? subjName(t.sid) || "Online"
-    : (cache.plan.classes.find((c) => c.id === t.cid) || {}).name || "Zajęcia";
+  return taskSubjectName(cache.plan, t);
 }
 
 /* Odznaka typu zadania (Kolokwium / Sprawozdanie / Projekt); domyślne „Zadanie” nie zaśmieca wiersza */
@@ -24,6 +36,22 @@ export function catChip(t) {
   const eff = c === "task" && isExamTask(t) ? "exam" : c;
   if (eff === "task") return "";
   return '<span class="tcat ' + eff + '">' + esc(TASK_TYPES[eff]) + "</span>";
+}
+
+/* Nagłówek wiersza zadania: dla kolokwium/sprawozdania bez nazwy pokazuje odznakę + przedmiot zamiast powielać słowo */
+export function taskHeadingHtml(t, { omitSubj = false } = {}) {
+  const tx = typeof t.text === "string" ? t.text.trim() : "";
+  const chip = catChip(t);
+  if (tx) return chip + esc(tx);
+  const sub = omitSubj ? "" : taskLabelOf(t);
+  if (sub) return chip + esc(sub);
+  if (chip) return chip;
+  return esc(taskTitle(t));
+}
+
+export function taskNoteHtml(t) {
+  const n = typeof t.note === "string" ? t.note.trim() : "";
+  return n ? '<span class="tk-note">' + esc(n) + "</span>" : "";
 }
 
 /* Kompaktowy wybór typu zadania (1 tapnięcie) używany w formularzach zadań */
@@ -50,9 +78,9 @@ export function catPickerHtml(cur = "task") {
   );
 }
 
-export function bindCatPicker(form) {
+export function bindCatPicker(form, onChange) {
   const box = form.querySelector("[data-catbox]");
-  if (!box) return { reset() {} };
+  if (!box) return { reset() {}, get: () => "task" };
   const inp = box.querySelector('input[name="cat"]');
   const paint = (val) => {
     inp.value = val;
@@ -61,25 +89,19 @@ export function bindCatPicker(form) {
       b.classList.toggle("on", on);
       b.setAttribute("aria-pressed", on);
     });
+    if (onChange) onChange(val);
   };
   box.addEventListener("click", (e) => {
     const b = e.target.closest("[data-tcat]");
     if (b && box.contains(b)) paint(b.dataset.tcat);
   });
-  return { reset: () => paint("task") };
+  return { reset: () => paint("task"), set: paint, get: () => inp.value };
 }
 
-/* Zadanie należy do konkretnego dnia zajęć (date); starsze zadania bez daty widać przy każdym terminie */
-export const tasksOf = (cid, date) =>
-  cache.plan.tasks
-    .filter((t) => t.kind === "onsite" && t.cid === cid && (!t.date || t.date === date))
-    .sort(
-      (a, b) =>
-        a.done - b.done ||
-        (a.due ? a.due + (a.time || "") : "9").localeCompare(b.due ? b.due + (b.time || "") : "9")
-    );
+/* Wszystkie zadania przypadające w czasie trwania konkretnych zajęć */
+export const tasksOf = (item) => tasksForClass(cache.plan, item);
 
-export const tkKey = (t) => (t.due ? t.due + (t.time || "00:00") : "9");
+export const tkKey = (t) => (t.due ? t.due + (t.time || "23:59") : "9");
 
 export function taskMeta(t) {
   if (!t.due) return "Bez terminu";
@@ -88,14 +110,20 @@ export function taskMeta(t) {
     "Termin: " +
     d.toLocaleDateString("pl-PL", { weekday: "short", day: "numeric", month: "short" }) +
     (t.time ? ", " + fmtT(t.time) : "") +
-    (isLate(t) ? " · po terminie" : "")
+    (isLate(t) ? " · po terminie" : "") +
+    (t.url ? " · link" : "")
   );
 }
 
 function tkRow(t) {
   const label = taskLabelOf(t);
   const exam = isExamTask(t);
-  const kindTag = ui.tkView === "all" ? (t.kind === "online" ? " · Online" : " · Stacjonarne") : "";
+  const txEmpty = !(typeof t.text === "string" && t.text.trim());
+  const metaParts = [];
+  if (label && !txEmpty) metaParts.push(label);
+  if (label && macOf(label)) metaParts.push("Mac: " + MAC_TXT[macOf(label)]);
+  metaParts.push(taskMeta(t));
+  const ariaName = taskTitle(t) + (label ? " (" + label + ")" : "");
   return (
     '<div class="tk-row' +
     (t.done ? " done" : "") +
@@ -104,7 +132,7 @@ function tkRow(t) {
     '"><button type="button" class="tk-cb" role="checkbox" aria-checked="' +
     (t.done ? "true" : "false") +
     '" aria-label="Ukończone: ' +
-    esc(t.text) +
+    esc(ariaName) +
     '" data-a="tg:' +
     esc(t.id) +
     '"><i>' +
@@ -112,14 +140,11 @@ function tkRow(t) {
     '</i></button><button type="button" class="tk-body tkopen" data-a="to:' +
     esc(t.id) +
     '"><span class="tk-tx">' +
-    catChip(t) +
-    esc(t.text) +
-    '</span><span class="tk-meta">' +
-    esc(label) +
-    esc(kindTag) +
-    (macOf(label) ? " · Mac: " + MAC_TXT[macOf(label)] : "") +
-    " · " +
-    esc(taskMeta(t)) +
+    taskHeadingHtml(t) +
+    "</span>" +
+    taskNoteHtml(t) +
+    '<span class="tk-meta">' +
+    esc(metaParts.join(" · ")) +
     "</span></button></div>"
   );
 }
@@ -128,7 +153,7 @@ function taskFilterSubjects() {
   const map = new Map();
   for (const t of cache.plan.tasks) {
     const lbl = taskLabelOf(t);
-    if (lbl && lbl !== "Online" && lbl !== "Zajęcia") map.set(nameLc(lbl), lbl);
+    if (lbl) map.set(nameLc(lbl), lbl);
   }
   for (const c of cache.plan.classes) {
     if (c.name) map.set(nameLc(c.name), c.name);
@@ -183,26 +208,20 @@ function syncFilterControls() {
 }
 
 export function renderTasks() {
-  $("tv-all").classList.toggle("on", ui.tkView === "all");
-  $("tv-onsite").classList.toggle("on", ui.tkView === "onsite");
-  $("tv-online").classList.toggle("on", ui.tkView === "online");
   $("hdBtn").setAttribute("aria-checked", ui.hideDone ? "true" : "false");
 
-  const canAddOl = ui.tkView !== "onsite";
-  const showOl = canAddOl && ui.olOpen;
-  $("olBtn").hidden = !canAddOl;
+  const showAdd = !!ui.olOpen;
   if (!ui.olAnim) {
-    $("olBtn").setAttribute("aria-expanded", showOl ? "true" : "false");
-    $("tkOlWrap").hidden = !showOl;
+    $("olBtn").setAttribute("aria-expanded", showAdd ? "true" : "false");
+    $("tkOlWrap").hidden = !showAdd;
   }
-  if (showOl) refreshOlForm();
+  if (showAdd) refreshOlForm();
 
   syncFilterControls();
 
-  const byKind =
-    ui.tkView === "all" ? cache.plan.tasks : cache.plan.tasks.filter((t) => t.kind === ui.tkView);
+  const all = cache.plan.tasks;
   const q = nameLc(ui.tkQuery.trim());
-  const filtered = byKind.filter((t) => {
+  const filtered = all.filter((t) => {
     if (ui.hideDone && t.done) return false;
     if (ui.tkSubj && nameLc(taskLabelOf(t)) !== ui.tkSubj) return false;
     if (ui.tkCat) {
@@ -213,7 +232,8 @@ export function renderTasks() {
       }
     }
     if (q) {
-      const hay = nameLc(t.text) + " " + nameLc(taskLabelOf(t));
+      const catName = TASK_TYPES[taskCat(t)] || "";
+      const hay = nameLc(t.text) + " " + nameLc(t.note) + " " + nameLc(taskLabelOf(t)) + " " + nameLc(catName);
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -228,13 +248,9 @@ export function renderTasks() {
       '<div class="free">' +
       (hasActiveFilters
         ? "Brak zadań pasujących do wybranych filtrów."
-        : byKind.length
+        : all.length
         ? "Wszystkie zadania są ukończone (ukryte)."
-        : ui.tkView === "online"
-        ? "Brak zadań online. Stuknij „+ Dodaj online”, aby dodać pierwsze."
-        : ui.tkView === "onsite"
-        ? "Brak zadań stacjonarnych. Dodasz je w oknie zajęć, stukając kafelek na planie."
-        : "Brak zadań. Stacjonarne dodasz w oknie zajęć, a online przyciskiem „+ Dodaj online”.") +
+        : "Brak zadań. Stuknij „+ Dodaj zadanie” albo wybierz zajęcia na planie.") +
       "</div>";
     return;
   }
@@ -350,7 +366,7 @@ export function remHtml(rem) {
   );
 }
 
-export function remBind(form, kind, getEnd, isNew) {
+export function remBind(form, getEnd, isNew) {
   const box = form.querySelector("[data-rem]");
   const at = box.querySelector('[name="remAt"]');
   const info = box.querySelector("[data-rinfo]");
@@ -365,7 +381,7 @@ export function remBind(form, kind, getEnd, isNew) {
     let rule = null;
     let eff;
     let err = "";
-    if (mode === "def") eff = ruleOf({ kind }, cache.plan.notif);
+    if (mode === "def") eff = ruleOf({}, cache.plan.notif);
     else if (mode === "rel") {
       if (min) rule = eff = { m: "rel", min };
       else err = "Wybierz, ile czasu przed terminem ma przyjść powiadomienie.";
@@ -435,7 +451,7 @@ export function remBind(form, kind, getEnd, isNew) {
       if (mode === "abs" && !at.value) {
         const end = getEnd();
         if (end) {
-          let s = ruleStart(ruleOf({ kind }, cache.plan.notif), day0(end), end);
+          let s = ruleStart(ruleOf({}, cache.plan.notif), day0(end), end);
           if (s > end || s <= new Date()) s = new Date(end.getTime() - 36e5);
           at.value = fmtLocal(s);
         }
@@ -473,8 +489,8 @@ export function setRem(x, rem) {
   if (a !== b) x.at = Date.now();
 }
 
-/* ----- Formularz zadania online ----- */
-function subjPairs() {
+/* ----- Wspólny formularz zadania (zakładka Zadania, szczegóły zajęć, edycja) ----- */
+export function subjPairs() {
   const s = cache.plan.subjects;
   const have = new Set(s.map((x) => x.name.toLowerCase()));
   const out = s.map((x) => [x.id, x.name]);
@@ -488,13 +504,29 @@ function subjPairs() {
   return [["", "— bez przedmiotu —"]].concat(out);
 }
 
-function applySubject(p, val) {
+export function subjValueForName(name) {
+  if (!name) return "";
+  const lc = name.trim().toLowerCase();
+  const s = cache.plan.subjects.find((x) => x.name.trim().toLowerCase() === lc);
+  if (s) return s.id;
+  const c = cache.plan.classes.find((x) => x.name.trim().toLowerCase() === lc);
+  return c ? "n:" + c.name : "";
+}
+
+export function subjNameFromVal(val) {
+  if (!val) return "";
+  if (val.startsWith("n:")) return val.slice(2);
+  const s = cache.plan.subjects.find((x) => x.id === val);
+  return s ? s.name : "";
+}
+
+export function applySubject(p, val) {
   if (!val) return "";
   if (val.startsWith("n:")) {
     const n = val.slice(2);
     let s = p.subjects.find((x) => x.name.toLowerCase() === n.toLowerCase());
     if (!s) {
-      s = { id: uid(), name: n, desc: "", req: "" };
+      s = { id: uid(), name: n, desc: "", req: "", forms: {}, mac: "" };
       p.subjects.push(s);
     }
     return s.id;
@@ -502,42 +534,218 @@ function applySubject(p, val) {
   return val;
 }
 
-const olFields = (v) =>
-  '<label class="fl">Treść zadania<input name="text" maxlength="300" value="' +
-  esc(v.text) +
-  '" placeholder="np. Quiz na platformie, rozdział 3"></label>' +
-  catPickerHtml(v.cat || "task") +
-  '<label class="fl">Przedmiot<select name="subj">' +
-  selOpts(subjPairs(), v.subj) +
-  "</select></label>" +
-  '<div class="two"><label class="fl">Termin oddania<input type="date" name="due" value="' +
-  esc(v.due) +
-  '"></label><label class="fl">Godzina<input type="time" name="time" value="' +
-  esc(v.time) +
-  '"></label></div>' +
-  remHtml(v.rem) +
-  '<p class="msg bad" data-err role="alert"></p>';
+export function taskFieldsHtml(v) {
+  const cat = v.cat || "task";
+  const hideTitle = cat === "exam";
+  return (
+    catPickerHtml(cat) +
+    '<label class="fl" data-txwrap' +
+    (hideTitle ? " hidden" : "") +
+    '><span data-txlbl>' +
+    (cat === "report" ? "Nazwa sprawozdania (opcjonalnie)" : cat === "project" ? "Nazwa projektu" : "Treść zadania") +
+    '</span><input name="text" maxlength="300" value="' +
+    esc(v.text || "") +
+    '" placeholder="' +
+    esc(
+      cat === "report"
+        ? "np. Lab 4 — algorytmy (można pominąć)"
+        : cat === "project"
+        ? "np. Aplikacja webowa — etap 1"
+        : "np. Zadania 1–5 str. 40"
+    ) +
+    '"></label>' +
+    '<label class="fl" data-notewrap><span data-notelbl>' +
+    (cat === "exam" ? "Zakres materiału / opis" : "Opis / notatka (opcjonalnie)") +
+    '</span><textarea name="note" rows="3" maxlength="1000" placeholder="' +
+    esc(
+      cat === "exam"
+        ? "np. Rozdziały 1–3, całki nieoznaczone, definicje z wykładu…"
+        : "Dodatkowe informacje, wymagania, zagadnienia…"
+    ) +
+    '">' +
+    esc(v.note || "") +
+    "</textarea></label>" +
+    '<label class="fl">Przedmiot<select name="subj">' +
+    selOpts(subjPairs(), v.subj || "") +
+    "</select></label>" +
+    '<div class="qdates" data-qdate role="group" aria-label="Szybki wybór terminu">' +
+    '<button type="button" data-qd="today">Dziś</button>' +
+    '<button type="button" data-qd="tomorrow">Jutro</button>' +
+    '<button type="button" data-qd="week">Za tydzień</button>' +
+    '<button type="button" data-qd="next" hidden>Następne zajęcia</button>' +
+    "</div>" +
+    '<div class="two"><label class="fl">Termin<input type="date" name="due" value="' +
+    esc(v.due || "") +
+    '"></label><label class="fl">Godzina (opcjonalnie)<div class="tmwrap"><input type="time" name="time" value="' +
+    esc(v.time || "") +
+    '"><button type="button" class="tmclr" data-cleartime aria-label="Wyczyść godzinę (całodniowe)" title="Całodniowe (bez godziny)"' +
+    (v.time ? "" : " hidden") +
+    ">×</button></div></label></div>" +
+    '<label class="fl">Link (opcjonalnie)<input type="url" name="url" maxlength="300" value="' +
+    esc(v.url || "") +
+    '" placeholder="https://… (np. Teams, Moodle)"></label>' +
+    remHtml(v.rem) +
+    '<p class="msg bad" data-err role="alert"></p>'
+  );
+}
 
-const olEnd = (f) => () => endOf(f.elements.due.value, f.elements.time.value.trim() || "23:59");
+const taskEnd = (f) => () => endOf(f.elements.due.value, f.elements.time.value.trim() || "23:59");
 
-function readOl(f, errEl, rb) {
+export function bindTaskForm(form, isNew) {
+  const E = form.elements;
+  const txWrap = form.querySelector("[data-txwrap]");
+  const txLbl = form.querySelector("[data-txlbl]");
+  const noteLbl = form.querySelector("[data-notelbl]");
+  const qBox = form.querySelector("[data-qdate]");
+  const nextBtn = qBox ? qBox.querySelector('[data-qd="next"]') : null;
+  const clrTime = form.querySelector("[data-cleartime]");
+
+  const syncCatUi = (cat) => {
+    if (txWrap) txWrap.hidden = cat === "exam";
+    if (txLbl) {
+      txLbl.textContent =
+        cat === "report"
+          ? "Nazwa sprawozdania (opcjonalnie)"
+          : cat === "project"
+          ? "Nazwa projektu"
+          : "Treść zadania";
+    }
+    if (E.text) {
+      E.text.placeholder =
+        cat === "report"
+          ? "np. Lab 4 — algorytmy (można pominąć)"
+          : cat === "project"
+          ? "np. Aplikacja webowa — etap 1"
+          : "np. Zadania 1–5 str. 40";
+    }
+    if (noteLbl) {
+      noteLbl.textContent = cat === "exam" ? "Zakres materiału / opis" : "Opis / notatka (opcjonalnie)";
+    }
+    if (E.note) {
+      E.note.placeholder =
+        cat === "exam"
+          ? "np. Rozdziały 1–3, całki nieoznaczone, definicje z wykładu…"
+          : "Dodatkowe informacje, wymagania, zagadnienia…";
+    }
+  };
+
+  let nextOcc = null;
+  const syncNextChip = () => {
+    if (!nextBtn || !E.subj) return;
+    const sname = subjNameFromVal(E.subj.value);
+    nextOcc = sname ? nextOccurrenceBySubject(cache.plan, sname, new Date()) : null;
+    if (nextOcc) {
+      const wdTxt = nextOcc.date.toLocaleDateString("pl-PL", { weekday: "short", day: "numeric", month: "short" });
+      nextBtn.textContent = "Następne zajęcia (" + wdTxt + ", " + fmtT(nextOcc.s) + ")";
+      nextBtn.hidden = false;
+    } else {
+      nextBtn.hidden = true;
+    }
+  };
+
+  const syncTimeClear = () => {
+    if (clrTime && E.time) clrTime.hidden = !E.time.value.trim();
+  };
+
+  const catCtrl = bindCatPicker(form, syncCatUi);
+  const remCtrl = remBind(form, taskEnd(form), isNew);
+
+  if (E.subj) E.subj.addEventListener("change", syncNextChip);
+  if (E.time) {
+    E.time.addEventListener("input", syncTimeClear);
+    E.time.addEventListener("change", syncTimeClear);
+  }
+  if (clrTime) {
+    clrTime.addEventListener("click", () => {
+      E.time.value = "";
+      syncTimeClear();
+      remCtrl.update();
+    });
+  }
+  if (qBox) {
+    qBox.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-qd]");
+      if (!b) return;
+      const now = day0(new Date());
+      const k = b.dataset.qd;
+      if (k === "today") E.due.value = dk(now);
+      else if (k === "tomorrow") E.due.value = dk(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+      else if (k === "week") E.due.value = dk(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7));
+      else if (k === "next" && nextOcc) {
+        E.due.value = nextOcc.dk;
+        E.time.value = nextOcc.s;
+        syncTimeClear();
+      }
+      remCtrl.update();
+    });
+  }
+
+  syncCatUi(catCtrl.get());
+  syncNextChip();
+  syncTimeClear();
+
+  return {
+    cat: catCtrl,
+    rem: remCtrl,
+    syncNextChip,
+    syncTimeClear,
+    read(errEl) {
+      return readTaskForm(form, errEl, remCtrl);
+    },
+    reset(defaults) {
+      if (defaults) {
+        if (defaults.text !== undefined) E.text.value = defaults.text;
+        if (defaults.note !== undefined) E.note.value = defaults.note;
+        if (defaults.url !== undefined) E.url.value = defaults.url;
+        if (defaults.due !== undefined) E.due.value = defaults.due;
+        if (defaults.time !== undefined) E.time.value = defaults.time;
+        if (defaults.subj !== undefined) E.subj.value = defaults.subj;
+      }
+      catCtrl.reset();
+      remCtrl.reset();
+      syncNextChip();
+      syncTimeClear();
+    },
+  };
+}
+
+export function readTaskForm(f, errEl, rb) {
   const E = f.elements;
-  const text = E.text.value.trim();
+  const cat = E.cat ? E.cat.value : "task";
+  const text = cat === "exam" ? "" : E.text.value.trim();
+  const note = E.note ? E.note.value.trim() : "";
   const due = E.due.value;
-  const tv = E.time.value.trim() || "23:59";
+  const tv = E.time.value.trim();
+  const rawUrl = E.url ? E.url.value.trim() : "";
   const err = (m, el) => {
     errEl.textContent = m;
     if (el) el.focus();
     return null;
   };
-  if (!text) return err("Wpisz treść zadania.", E.text);
-  if (!fromDK(due)) return err("Wybierz termin oddania (datę).", E.due);
-  if (!normT(tv)) return err("Podaj poprawną godzinę.", E.time);
+  if (!text && cat !== "exam" && cat !== "report") {
+    return err(cat === "project" ? "Wpisz nazwę projektu." : "Wpisz treść zadania.", E.text);
+  }
+  if (!fromDK(due)) return err("Wybierz termin (datę).", E.due);
+  if (tv && !normT(tv)) return err("Podaj poprawną godzinę.", E.time);
+  let url = "";
+  if (rawUrl) {
+    const cand = /^https?:\/\//i.test(rawUrl) ? rawUrl : "https://" + rawUrl;
+    if (!/^https?:\/\/\S+\.\S+$/i.test(cand)) return err("Podaj poprawny adres linku (np. https://…).", E.url);
+    url = cand;
+  }
   const r = rb.read();
   if (!r.ok) return err(r.err, r.el);
   errEl.textContent = "";
-  const cat = E.cat ? E.cat.value : "task";
-  return { text, due, time: normT(tv), subj: E.subj.value, rem: r.rem, cat };
+  return {
+    text,
+    note,
+    url,
+    due,
+    time: tv ? normT(tv) : "",
+    subj: E.subj.value,
+    rem: r.rem,
+    cat,
+  };
 }
 
 const tomorrowDK = () => {
@@ -546,28 +754,25 @@ const tomorrowDK = () => {
 };
 
 let olSig = "";
-let olRem = null;
-let olCat = null;
+let olFormCtrl = null;
 
 export function initOlForm() {
   const box = $("tkOnlineForm");
   box.innerHTML =
     '<form id="olf" novalidate autocomplete="off">' +
-    olFields({ text: "", subj: "", due: tomorrowDK(), time: "23:59", cat: "task" }) +
-    '<div class="acts"><button type="submit" class="btn pri">Dodaj zadanie online</button></div></form>';
+    taskFieldsHtml({ text: "", note: "", url: "", subj: "", due: tomorrowDK(), time: "", cat: "task" }) +
+    '<div class="acts"><button type="submit" class="btn pri">Dodaj zadanie</button></div></form>';
   olSig = JSON.stringify(subjPairs());
-  olRem = remBind($("olf"), "online", olEnd($("olf")), true);
-  olCat = bindCatPicker($("olf"));
+  olFormCtrl = bindTaskForm($("olf"), true);
   $("olf").onsubmit = (ev) => {
     ev.preventDefault();
     const f = $("olf");
-    const v = readOl(f, f.querySelector("[data-err]"), olRem);
+    const v = olFormCtrl.read(f.querySelector("[data-err]"));
     if (!v) return;
     let newId = "";
     const ok = change((p) => {
       const t = {
         id: uid(),
-        kind: "online",
         sid: applySubject(p, v.subj),
         cid: "",
         at: Date.now(),
@@ -575,19 +780,17 @@ export function initOlForm() {
         text: v.text,
         due: v.due,
         time: v.time,
-        url: "",
-        note: "",
+        url: v.url,
+        note: v.note,
         done: false,
       };
       if (v.cat && v.cat !== "task") t.cat = v.cat;
       if (v.rem) t.rem = v.rem;
       newId = t.id;
       p.tasks.push(t);
-    }, "Dodano zadanie online");
+    }, v.cat === "exam" ? "Dodano kolokwium" : v.cat === "report" ? "Dodano sprawozdanie" : "Dodano zadanie");
     if (ok) {
-      f.elements.text.value = "";
-      olRem.reset();
-      olCat.reset();
+      olFormCtrl.reset({ text: "", note: "", url: "", due: tomorrowDK(), time: "" });
       toggleOl(false);
       flashTask(newId);
     }
@@ -603,11 +806,18 @@ export function toggleOl(open) {
     ui.olAnim.cancel();
     ui.olAnim = null;
   }
+  const focusFirst = () => {
+    const f = $("olf");
+    if (!f) return;
+    const cat = f.elements.cat ? f.elements.cat.value : "task";
+    const el = cat === "exam" ? f.elements.note : f.elements.text;
+    if (el) el.focus({ preventScroll: true });
+  };
   if (reduced() || !w.animate) {
     w.hidden = !open;
     if (open) {
       refreshOlForm();
-      $("olf").elements.text.focus();
+      focusFirst();
     }
     return;
   }
@@ -630,10 +840,7 @@ export function toggleOl(open) {
     if (ui.olAnim !== a) return;
     ui.olAnim = null;
     w.hidden = !ui.olOpen;
-    if (ui.olOpen) {
-      const t = $("olf").elements.text;
-      t.focus({ preventScroll: true });
-    }
+    if (ui.olOpen) focusFirst();
   };
   a.onfinish = fin;
   a.oncancel = () => {
@@ -658,117 +865,112 @@ function flashTask(id) {
 }
 
 export function refreshOlForm() {
-  if (olRem) olRem.update();
+  if (olFormCtrl) {
+    olFormCtrl.rem.update();
+    olFormCtrl.syncNextChip();
+  }
   const sig = JSON.stringify(subjPairs());
   if (sig === olSig) return;
   olSig = sig;
   const s = $("olf").elements.subj;
   const cur = s.value;
   s.innerHTML = selOpts(subjPairs(), cur);
+  if (olFormCtrl) olFormCtrl.syncNextChip();
 }
 
-export function openTask(id) {
+/* ----- Jedno, pełne okno edycji każdego zadania ----- */
+export function openTask(id, opts = {}) {
   const t = cache.plan.tasks.find((x) => x.id === id);
   if (!t) return;
-  if (t.kind === "onsite") {
-    if (cache.plan.classes.some((c) => c.id === t.cid)) {
-      app.openDetail(t.cid, t.date || t.due);
-    } else {
-      openOnsiteTask(id);
-    }
-    return;
-  }
+  const sname = taskLabelOf(t);
   let sv = "";
   if (t.sid && cache.plan.subjects.some((s) => s.id === t.sid)) sv = t.sid;
-  ui.ctx = { tid: id, view: "oledit" };
+  else if (sname) sv = subjValueForName(sname);
+
+  const matchedCls = classForTask(cache.plan, t);
+  const back = opts.back || null;
+  ui.ctx = { tid: id, view: "tkedit", back };
+
+  const cat = taskCat(t);
+  const sheetTitle = cat === "exam" ? "Kolokwium" : cat === "report" ? "Sprawozdanie" : cat === "project" ? "Projekt" : "Zadanie";
+
+  const clsBanner = matchedCls
+    ? '<button type="button" class="dt-subj tk-cls-jump" data-sh="tgo:' +
+      esc(matchedCls.id) +
+      "|" +
+      esc(matchedCls.date) +
+      '"><span>W czasie zajęć: <b>' +
+      esc(matchedCls.c.name) +
+      "</b> (" +
+      esc(fmtT(matchedCls.c.s)) +
+      "–" +
+      esc(fmtT(matchedCls.c.e)) +
+      ')</span><b aria-hidden="true">›</b></button>'
+    : "";
+
+  const urlBanner = t.url
+    ? '<a class="tk-url-btn" href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">Otwórz link ↗</a>'
+    : "";
+
   openSheet(
-    "Zadanie online",
-    '<form id="ole" novalidate autocomplete="off">' +
-      olFields({ text: t.text, subj: sv, due: t.due, time: t.time || "23:59", rem: t.rem, cat: taskCat(t) }) +
-      '<div class="acts"><button type="submit" class="btn pri">Zapisz</button><button type="button" class="btn" data-sh="close">Anuluj</button><button type="button" class="btn dng" data-sh="oldel">Usuń</button></div></form>'
+    sheetTitle,
+    clsBanner +
+      urlBanner +
+      '<form id="ole" novalidate autocomplete="off">' +
+      taskFieldsHtml({
+        text: t.text,
+        note: t.note,
+        url: t.url,
+        subj: sv,
+        due: t.due,
+        time: t.time || "",
+        rem: t.rem,
+        cat,
+      }) +
+      '<div class="acts"><button type="submit" class="btn pri">Zapisz</button><button type="button" class="btn" data-sh="' +
+      (back ? "tkback" : "close") +
+      '">' +
+      (back ? "Wróć" : "Anuluj") +
+      '</button><button type="button" class="btn dng" data-sh="oldel">Usuń</button></div></form>'
   );
+
   const f = $("ole");
-  const rb = remBind(f, "online", olEnd(f), false);
-  bindCatPicker(f);
+  const ctrl = bindTaskForm(f, false);
   f.onsubmit = (ev) => {
     ev.preventDefault();
-    const v = readOl(f, f.querySelector("[data-err]"), rb);
+    const v = ctrl.read(f.querySelector("[data-err]"));
     if (!v) return;
     const ok = change((p) => {
       const x = p.tasks.find((y) => y.id === id);
       if (x) {
         x.text = v.text;
+        x.note = v.note;
+        x.url = v.url;
         x.due = v.due;
         x.time = v.time;
         x.sid = applySubject(p, v.subj);
+        /* Zadanie żyje niezależnie — czyścimy przestarzałe sztywne powiązania ze starych wersji */
+        x.cid = "";
+        x.date = "";
+        delete x.kind;
         if (v.cat && v.cat !== "task") x.cat = v.cat;
         else delete x.cat;
         setRem(x, v.rem);
       }
     });
-    if (ok) closeSheet();
+    if (ok) tkBack();
   };
 }
 
-export function openOnsiteTask(id) {
-  const t = cache.plan.tasks.find((x) => x.id === id && x.kind === "onsite");
-  if (!t) return;
-  const cl = cache.plan.classes.find((c) => c.id === t.cid);
-  const orphaned = !cl;
-  ui.ctx = { tid: id, cid: t.cid, date: t.date || t.due, view: "osedit" };
-  openSheet(
-    "Zadanie stacjonarne",
-    '<form id="ose" novalidate autocomplete="off"><p class="shsub">' +
-      esc(cl ? cl.name : "Zajęcia (usunięte z planu)") +
-      " · " +
-      esc(taskMeta(t)) +
-      '</p><label class="fl">Treść zadania<input name="text" maxlength="300" value="' +
-      esc(t.text) +
-      '"></label>' +
-      catPickerHtml(taskCat(t)) +
-      remHtml(t.rem) +
-      '<p class="msg bad" data-err role="alert"></p>' +
-      '<div class="acts"><button type="submit" class="btn pri">Zapisz</button><button type="button" class="btn" data-sh="osback">' +
-      (orphaned ? "Anuluj" : "Wróć") +
-      "</button>" +
-      (orphaned ? '<button type="button" class="btn dng" data-sh="oldel">Usuń</button>' : "") +
-      "</div></form>"
-  );
-  const f = $("ose");
-  const rb = remBind(f, "onsite", () => endOf(t.due, t.time || "00:00"), false);
-  bindCatPicker(f);
-  f.onsubmit = (ev) => {
-    ev.preventDefault();
-    const text = f.elements.text.value.trim();
-    const er = f.querySelector("[data-err]");
-    if (!text) {
-      er.textContent = "Wpisz treść zadania.";
-      f.elements.text.focus();
-      return;
-    }
-    const r = rb.read();
-    if (!r.ok) {
-      er.textContent = r.err;
-      if (r.el) r.el.focus();
-      return;
-    }
-    const cat = f.elements.cat ? f.elements.cat.value : "task";
-    const ok = change((p) => {
-      const x = p.tasks.find((y) => y.id === id);
-      if (x) {
-        x.text = text;
-        if (cat && cat !== "task") x.cat = cat;
-        else delete x.cat;
-        setRem(x, r.rem);
-      }
-    });
-    if (ok) osBack();
-  };
-}
-
-export function osBack() {
-  if (cache.plan.classes.some((c) => c.id === ui.ctx.cid)) app.openDetail(ui.ctx.cid, ui.ctx.date);
-  else closeSheet();
+export function tkBack() {
+  const b = ui.ctx && ui.ctx.back;
+  if (b && b.view === "detail" && cache.plan.classes.some((c) => c.id === b.cid)) {
+    app.openDetail(b.cid, b.date);
+  } else if (b && b.view === "subj" && b.sname) {
+    app.openSubject(b.sname, "tasks");
+  } else {
+    closeSheet();
+  }
 }
 
 export function toggleTask(id) {
@@ -780,11 +982,5 @@ export function toggleTask(id) {
 }
 
 export function openAlertTask(id) {
-  const t = cache.plan.tasks.find((x) => x.id === id);
-  if (!t) return;
-  if (t.kind === "onsite" && cache.plan.classes.some((c) => c.id === t.cid)) {
-    app.openDetail(t.cid, t.date || t.due);
-  } else {
-    openTask(id);
-  }
+  openTask(id);
 }

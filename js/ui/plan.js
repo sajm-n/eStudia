@@ -1,11 +1,11 @@
 /* ===== Widok planu zajęć: kalendarz, widok dnia, siatka tygodnia, linia postępu i edycja zajęć ===== */
 
 import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW, DOWS } from "../config.js";
-import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, endOf, overlaps, isLate, taskGroup, isExamTask, absencesOf, isAbsentOn, absenceLimit, dayOverrideOf, dayOverrideTarget } from "../core.js";
+import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, taskGroup, isExamTask, taskTitle, itemsFor, tasksForClass, absencesOf, isAbsentOn, absenceLimit, dayOverrideOf, dayOverrideTarget } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, K, reduced, isDesk, wk, pre, items, dl, dlong, t5, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, toast, change, playGo } from "./sheet.js";
-import { tasksOf, taskMeta, remHtml, remBind, catChip, catPickerHtml, bindCatPicker, taskLabelOf } from "./tasks.js";
+import { tasksOf, taskMeta, taskHeadingHtml, taskNoteHtml, taskFieldsHtml, bindTaskForm, subjValueForName, applySubject, taskLabelOf } from "./tasks.js";
 import { macOf, macChip } from "./subjects.js";
 
 const WG_H = 52;
@@ -167,7 +167,7 @@ function weekGrid(mon, td, nm) {
           const top = ((o.s - lo) / 60) * WG_H + 1;
           const h = Math.max(22, ((o.e - o.s) / 60) * WG_H - 3);
           const sh = h < 42;
-          const open = tasksOf(x.id, x.date).filter((t) => !t.done);
+          const open = tasksOf(x).filter((t) => !t.done);
           const hasExam = open.some(isExamTask);
           const aria =
             (ui.editMode ? "Edytuj: " : "Szczegóły i zadania: ") +
@@ -279,7 +279,7 @@ function card(it, cls, badge) {
   else if (it.movedFrom) tags.push('<span class="ev warn">Przeniesione z ' + esc(dl(fromDK(it.movedFrom))) + "</span>");
   else if (it.ex) tags.push('<span class="ev warn">Zmiana tego dnia</span>');
   if (isAbsentOn(cache.plan, it.id, it.date)) tags.push('<span class="ev warn">Nieobecność</span>');
-  const open = tasksOf(it.id, it.date).filter((t) => !t.done);
+  const open = tasksOf(it).filter((t) => !t.done);
   const hasExam = open.some(isExamTask);
   if (hasExam) tags.push('<span class="ev exam"><i></i>Kolokwium</span>');
   if (open.length) tags.push('<span class="ev tk"><i></i>Do zrobienia: ' + open.length + "</span>");
@@ -542,12 +542,13 @@ function renderAhead() {
         ? "pojutrze"
         : "za " + nextExam.diff + " dni";
     const sub = taskLabelOf(nextExam.t);
+    const exText = (nextExam.t.text || "").trim();
+    const exMain = exText ? exText + (sub ? " (" + sub + ")" : "") : sub || (nextExam.t.note || "").split("\n")[0].slice(0, 40) || "zbliża się";
     pills.push(
       '<button type="button" class="ah exam" data-a="tk:' +
         esc(nextExam.t.id) +
         '"><i></i><span><b>Kolokwium:</b> ' +
-        esc(nextExam.t.text) +
-        (sub ? " (" + esc(sub) + ")" : "") +
+        esc(exMain) +
         " · " +
         when +
         "</span></button>"
@@ -800,15 +801,16 @@ export function updateProgress() {
   });
 }
 
-/* ----- Szczegóły zajęć i zadania stacjonarne ----- */
+/* ----- Szczegóły zajęć i zadania w czasie ich trwania ----- */
 export function openDetail(cid, date, focus) {
   const base = cache.plan.classes.find((x) => x.id === cid);
   if (!base) return;
   const d = fromDK(date) || day0(new Date());
-  const it = items(d).find((x) => x.id === cid) || { c: base, base, ex: null, off: false };
+  const dKey = dk(d);
+  const it = items(d).find((x) => x.id === cid) || { id: cid, date: dKey, c: base, base, ex: null, off: false };
   const c = it.c;
-  ui.ctx = { cid, date: dk(d), view: "detail" };
-  const list = tasksOf(cid, dk(d));
+  ui.ctx = { cid, date: dKey, view: "detail" };
+  const list = tasksOf(it);
   const tags = [];
   if (c.type !== "x") tags.push('<span class="ty">' + esc(TYPES[c.type]) + "</span>");
   if (c.room) tags.push("<span>Sala: <b>" + esc(c.room) + "</b></span>");
@@ -822,7 +824,7 @@ export function openDetail(cid, date, focus) {
   const absDates = absencesOf(cache.plan, cid);
   const absCount = absDates.length;
   const absLim = absenceLimit(cache.plan, base);
-  const absToday = isAbsentOn(cache.plan, cid, dk(d));
+  const absToday = isAbsentOn(cache.plan, cid, dKey);
   const absCls = absLim !== null ? (absCount > absLim ? " bad" : absCount === absLim ? " warn" : "") : "";
   const absBar =
     '<div class="abs-bar">' +
@@ -864,27 +866,30 @@ export function openDetail(cid, date, focus) {
         '"><button type="button" class="tk-cb" role="checkbox" aria-checked="' +
         (t.done ? "true" : "false") +
         '" aria-label="Ukończone: ' +
-        esc(t.text) +
+        esc(taskTitle(t)) +
         '" data-sh="tg:' +
         esc(t.id) +
         '"><i>' +
         (t.done ? "✓" : "") +
         '</i></button><button type="button" class="tk-body tkopen" aria-label="Edytuj zadanie: ' +
-        esc(t.text) +
+        esc(taskTitle(t)) +
         '" data-sh="oe:' +
         esc(t.id) +
         '"><span class="tk-tx">' +
-        catChip(t) +
-        esc(t.text) +
-        '</span><span class="tk-meta">' +
+        taskHeadingHtml(t, { omitSubj: true }) +
+        "</span>" +
+        taskNoteHtml(t) +
+        '<span class="tk-meta">' +
         esc(taskMeta(t)) +
         '</span></button><button type="button" class="tk-del" aria-label="Usuń zadanie: ' +
-        esc(t.text) +
+        esc(taskTitle(t)) +
         '" data-sh="td:' +
         esc(t.id) +
         '">×</button></div>'
     )
     .join("");
+
+  const defSubj = subjValueForName(base.name);
 
   openSheet(
     base.name,
@@ -896,57 +901,38 @@ export function openDetail(cid, date, focus) {
       esc(fmtT(c.e)) +
       "</p>" +
       info +
-      '<h3 class="sec">Zadania</h3>' +
-      (list.length ? '<div class="tk-list">' + rows + "</div>" : '<p class="tk-empty">Brak zadań.</p>') +
-      '<form id="tf" novalidate autocomplete="off"><label class="fl">Nowe zadanie<input name="text" maxlength="300" placeholder="np. Zadania 1-5 str. 40"></label>' +
-      catPickerHtml("task") +
-      '<p class="hint">Termin: ' +
-      esc(d.toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" })) +
-      ", " +
-      esc(fmtT(c.s)) +
-      " (dzień i godzina tych zajęć).</p>" +
-      remHtml() +
-      '<p id="tfErr" class="msg bad" role="alert"></p>' +
+      '<h3 class="sec">Zadania w czasie tych zajęć</h3>' +
+      (list.length ? '<div class="tk-list">' + rows + "</div>" : '<p class="tk-empty">Brak zadań w tym terminie.</p>') +
+      '<h3 class="sec">Dodaj zadanie</h3>' +
+      '<form id="tf" novalidate autocomplete="off">' +
+      taskFieldsHtml({ text: "", note: "", url: "", subj: defSubj, due: dKey, time: c.s, cat: "task" }) +
       '<div class="acts"><button type="submit" class="btn pri">Dodaj zadanie</button><button type="button" class="btn" data-sh="close">Zamknij</button></div></form>',
     focus
   );
   const f = $("tf");
-  const rb = remBind(f, "onsite", () => endOf(dk(d), c.s), true);
-  bindCatPicker(f);
+  const ctrl = bindTaskForm(f, true);
   f.onsubmit = (ev) => {
     ev.preventDefault();
-    const text = f.elements.text.value.trim();
-    if (!text) {
-      $("tfErr").textContent = "Wpisz treść zadania.";
-      f.elements.text.focus();
-      return;
-    }
-    const r = rb.read();
-    if (!r.ok) {
-      $("tfErr").textContent = r.err;
-      if (r.el) r.el.focus();
-      return;
-    }
-    const cat = f.elements.cat ? f.elements.cat.value : "task";
+    const v = ctrl.read(f.querySelector("[data-err]"));
+    if (!v) return;
     const ok = change((p) => {
       const t = {
         id: uid(),
-        kind: "onsite",
-        sid: "",
-        cid,
+        sid: applySubject(p, v.subj),
+        cid: "",
         at: Date.now(),
-        date: dk(d),
-        text,
-        due: dk(d),
-        time: c.s,
-        url: "",
-        note: "",
+        date: "",
+        text: v.text,
+        due: v.due,
+        time: v.time,
+        url: v.url,
+        note: v.note,
         done: false,
       };
-      if (cat && cat !== "task") t.cat = cat;
-      if (r.rem) t.rem = r.rem;
+      if (v.cat && v.cat !== "task") t.cat = v.cat;
+      if (v.rem) t.rem = v.rem;
       p.tasks.push(t);
-    });
+    }, v.cat === "exam" ? "Dodano kolokwium" : v.cat === "report" ? "Dodano sprawozdanie" : "Dodano zadanie");
     if (ok) rerenderDetail('input[name="text"]');
   };
 }
@@ -1130,9 +1116,8 @@ export function openOverride(cid, date) {
   const origDate = it.origDate || date;
   ui.ctx = { cid, date, origDate };
   const c = it.c;
-  const relatedTasks = cache.plan.tasks.filter(
-    (t) => t.kind === "onsite" && t.cid === cid && (t.date === date || t.date === origDate) && !t.done
-  );
+  const relatedTasks = tasksForClass(cache.plan, it).filter((t) => !t.done);
+  const relatedIds = new Set(relatedTasks.map((t) => t.id));
   openSheet(
     "Zmiana jednorazowa",
     '<p class="shsub">' +
@@ -1200,12 +1185,12 @@ export function openOverride(cid, date) {
         }
       }
       if (any) p.exceptions.push(ex);
-      if (moveTasks) {
+      if (moveTasks && relatedIds.size) {
         for (const t of p.tasks) {
-          if (t.kind === "onsite" && t.cid === cid && (t.date === date || t.date === origDate) && !t.done) {
-            t.date = toDate;
+          if (relatedIds.has(t.id) && !t.done) {
             t.due = toDate;
             t.time = s;
+            if (t.date) t.date = toDate;
           }
         }
       }
@@ -1278,13 +1263,25 @@ export function openDayMove(defaultFromDate) {
       $("dmTaskWrap").hidden = true;
       return;
     }
-    const cnt = cache.plan.tasks.filter(
-      (t) => t.kind === "onsite" && !t.done && (t.date === a || (mode === "swap" && t.date === b))
-    ).length;
+    const dayTaskIds = (dKey) => {
+      const out = new Set();
+      const dObj = fromDK(dKey);
+      if (!dObj) return out;
+      for (const it of itemsFor(cache.plan, dObj)) {
+        if (it.off) continue;
+        for (const t of tasksForClass(cache.plan, it)) {
+          if (!t.done) out.add(t.id);
+        }
+      }
+      return out;
+    };
+    const idsA = dayTaskIds(a);
+    const idsB = mode === "swap" ? dayTaskIds(b) : new Set();
+    const cnt = idsA.size + idsB.size;
     $("dmTaskWrap").hidden = !cnt;
     if (cnt) {
       $("dmTaskLbl").textContent =
-        "Przenieś też terminy zadań stacjonarnych (" + cnt + ") — odznaczone zachowuje pierwotne daty";
+        "Przenieś też terminy zadań z zajęć (" + cnt + ") — odznaczone zachowuje pierwotne daty";
     }
   };
 
@@ -1323,6 +1320,21 @@ export function openDayMove(defaultFromDate) {
     const moveTasks = mode !== "off" && !!(E.moveTasks && E.moveTasks.checked);
     const note = E.note ? E.note.value.trim() : "";
 
+    const dayTaskIds = (dKey) => {
+      const out = new Set();
+      const dObj = fromDK(dKey);
+      if (!dObj) return out;
+      for (const it of itemsFor(cache.plan, dObj)) {
+        if (it.off) continue;
+        for (const t of tasksForClass(cache.plan, it)) {
+          if (!t.done) out.add(t.id);
+        }
+      }
+      return out;
+    };
+    const moveA = moveTasks ? dayTaskIds(a) : new Set();
+    const moveB = moveTasks && mode === "swap" ? dayTaskIds(b) : new Set();
+
     const msg =
       mode === "off"
         ? "Oznaczono " + dl(fromDK(a)) + " jako dzień wolny"
@@ -1345,15 +1357,15 @@ export function openDayMove(defaultFromDate) {
       }
       p.dayOverrides = list;
 
-      if (moveTasks) {
+      if (moveTasks && (moveA.size || moveB.size)) {
         for (const t of p.tasks) {
-          if (t.kind !== "onsite" || t.done) continue;
-          if (t.date === a) {
-            t.date = b;
+          if (t.done) continue;
+          if (moveA.has(t.id)) {
             t.due = b;
-          } else if (mode === "swap" && t.date === b) {
-            t.date = a;
+            if (t.date) t.date = b;
+          } else if (moveB.has(t.id)) {
             t.due = a;
+            if (t.date) t.date = a;
           }
         }
       }

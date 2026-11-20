@@ -1,7 +1,7 @@
 /* ===== Drag & Drop: Desktop (siatka tygodnia + resize 8-20 + zmiana tygodnia) i Mobile (long-press na górnym uchwycie + pełny kafelek + kalendarz/krawędzie) ===== */
 
 import { DOW, DOWS } from "../config.js";
-import { pad, wd, dk, fromDK, fmtT, uid } from "../core.js";
+import { pad, wd, dk, fromDK, fmtT, uid, itemsFor, tasksForClass } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, isDesk, dl, dlong, ui, app } from "../state.js";
 import { openSheet, closeSheet, change } from "./sheet.js";
@@ -43,9 +43,9 @@ function commitDrop(info) {
   const { cid, date, origDate, isOnce, newDate, newS, newE } = info;
   const base = cache.plan.classes.find((c) => c.id === cid);
   if (!base) return;
-  const tasks = cache.plan.tasks.filter(
-    (t) => t.kind === "onsite" && t.cid === cid && (t.date === date || t.date === origDate) && !t.done
-  );
+  const srcIt = itemsFor(cache.plan, fromDK(date)).find((x) => x.id === cid) || { id: cid, date, c: base };
+  const tasks = tasksForClass(cache.plan, srcIt).filter((t) => !t.done);
+  const taskIds = new Set(tasks.map((t) => t.id));
 
   const applyOnce = (moveTasks) => {
     const ok = change((p) => {
@@ -65,12 +65,12 @@ function commitDrop(info) {
         if (newE !== base.e) { ex.e = newE; any = true; }
         if (any) p.exceptions.push(ex);
       }
-      if (moveTasks) {
+      if (moveTasks && taskIds.size) {
         for (const t of p.tasks) {
-          if (t.kind === "onsite" && t.cid === cid && (t.date === date || t.date === origDate) && !t.done) {
-            t.date = newDate;
+          if (taskIds.has(t.id) && !t.done) {
             t.due = newDate;
             t.time = newS;
+            if (t.date) t.date = newDate;
           }
         }
       }
@@ -98,12 +98,12 @@ function commitDrop(info) {
       c.s = newS;
       c.e = newE;
       if (wdChanged) p.exceptions = p.exceptions.filter((x) => x.cid !== cid);
-      if (moveTasks) {
+      if (moveTasks && taskIds.size) {
         for (const t of p.tasks) {
-          if (t.kind === "onsite" && t.cid === cid && (t.date === date || t.date === origDate) && !t.done) {
-            t.date = newDate;
+          if (taskIds.has(t.id) && !t.done) {
             t.due = newDate;
             t.time = newS;
+            if (t.date) t.date = newDate;
           }
         }
       }

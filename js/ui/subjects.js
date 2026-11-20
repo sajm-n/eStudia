@@ -1,17 +1,13 @@
 /* ===== Katalog przedmiotów, wymagania, notatki i zgodność z MacBookiem ===== */
 
 import { TYPES, TYPE_ORDER, GROUPS, MAC_OPTS, MAC_TXT } from "../config.js";
-import { dk, mn, uid, isLate, taskGroup, isExamTask, absencesOf, absenceLimit } from "../core.js";
+import { dk, mn, uid, isLate, taskGroup, isExamTask, taskSubjectName, taskTitle, absencesOf, absenceLimit } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, reduced, nameLc, ui } from "../state.js";
 import { openSheet, change } from "./sheet.js";
-import { tkKey, taskMeta, catChip } from "./tasks.js";
+import { tkKey, taskMeta, taskHeadingHtml, taskNoteHtml } from "./tasks.js";
 
 const FORM_LABEL = (t) => (t === "x" ? "Zajęcia" : t === "g" ? "Informacje" : TYPES[t]);
-const subjName = (sid) => {
-  const s = cache.plan.subjects.find((x) => x.id === sid);
-  return s ? s.name : "";
-};
 
 /* Jednorazowe zajęcia, które już się odbyły (data minęła albo dziś po godzinie zakończenia) */
 function oneOffEnded(c) {
@@ -23,11 +19,7 @@ function oneOffEnded(c) {
 
 export function subjTasks(name) {
   const k = nameLc(name);
-  const cl = (id) => {
-    const c = cache.plan.classes.find((x) => x.id === id);
-    return c ? c.name : "";
-  };
-  return cache.plan.tasks.filter((t) => nameLc(t.kind === "online" ? subjName(t.sid) : cl(t.cid)) === k);
+  return cache.plan.tasks.filter((t) => nameLc(taskSubjectName(cache.plan, t)) === k);
 }
 
 export function subjectList() {
@@ -219,14 +211,6 @@ export function flushSave() {
 }
 
 function sjTaskRow(t) {
-  const cls =
-    t.kind === "online"
-      ? "Online"
-      : "Stacjonarne" +
-        (() => {
-          const c = cache.plan.classes.find((x) => x.id === t.cid);
-          return c && c.type !== "x" ? " (" + TYPES[c.type] + ")" : "";
-        })();
   return (
     '<div class="tk-row' +
     (t.done ? " done" : "") +
@@ -235,7 +219,7 @@ function sjTaskRow(t) {
     '"><button type="button" class="tk-cb" role="checkbox" aria-checked="' +
     (t.done ? "true" : "false") +
     '" aria-label="Ukończone: ' +
-    esc(t.text) +
+    esc(taskTitle(t)) +
     '" data-sh="stg:' +
     esc(t.id) +
     '"><i>' +
@@ -243,11 +227,10 @@ function sjTaskRow(t) {
     '</i></button><button type="button" class="tk-body tkopen" data-sh="sto:' +
     esc(t.id) +
     '"><span class="tk-tx">' +
-    catChip(t) +
-    esc(t.text) +
-    '</span><span class="tk-meta">' +
-    esc(cls) +
-    " · " +
+    taskHeadingHtml(t, { omitSubj: true }) +
+    "</span>" +
+    taskNoteHtml(t) +
+    '<span class="tk-meta">' +
     esc(taskMeta(t)) +
     "</span></button></div>"
   );
@@ -321,7 +304,7 @@ export function openSubject(name, tab, focus) {
     body =
       (all.length
         ? groups
-        : '<p class="tk-empty">Brak zadań dla tego przedmiotu. Stacjonarne dodasz w oknie zajęć na planie, online w zakładce „Zadania”.</p>') +
+        : '<p class="tk-empty">Brak zadań dla tego przedmiotu. Dodasz je w zakładce „Zadania” albo klikając zajęcia na planie.</p>') +
       '<div class="acts"><button type="button" class="btn" data-sh="close">Zamknij</button></div>';
     sub = [
       forms.length ? forms.map((f) => FORM_LABEL(f.type)).join(" · ") : "",
