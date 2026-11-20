@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795175398380,
+  "rev": 1795190026250,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -578,8 +578,13 @@
       "time": "17:00"
     },
     "online": {
-      "m": "rel",
-      "min": 1440
+      "m": "day",
+      "days": 1,
+      "time": "17:00"
+    },
+    "morning": {
+      "on": true,
+      "time": "07:30"
     }
   },
   "absences": [
