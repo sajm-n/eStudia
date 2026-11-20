@@ -556,11 +556,14 @@ body.resizing,body.resizing *{cursor:ns-resize !important;-webkit-user-select:no
 .hdn>.navb.drag-nav-hover{background:color-mix(in srgb,var(--ac) 14%,var(--card));box-shadow:0 0 0 4px color-mix(in srgb,var(--ac) 36%,transparent);transform:scale(1.22)}
 .hdn>.navb.drag-nav-hover::before{animation:navdwell 550ms linear forwards}
 
-/* ===== v2.5.1: Drag & Drop na Telefonie (górny uchwyt, pełny kafelek kurczący się nad kalendarzem, krawędzie) ===== */
-.edit .c{flex-wrap:wrap}
-.c-drag{flex:0 0 100%;height:24px;display:flex;align-items:center;justify-content:center;border-bottom:1px dashed color-mix(in srgb,var(--bd) 75%,transparent);background:color-mix(in srgb,var(--tx) 3%,transparent);touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none}
-.c-drag i{display:block;width:38px;height:4px;border-radius:99px;background:var(--mut);opacity:.55;transition:width .16s ease,background-color .16s ease,opacity .16s ease}
-.c-drag.arming i{width:54px;background:var(--ac);opacity:1}
+/* ===== v2.5.2: Drag & Drop na Telefonie (górny uchwyt-kapsułka, pełny kafelek kurczący się nad kalendarzem, krawędzie) ===== */
+.edit .c:not(.offc){position:relative;overflow:visible;margin-top:15px}
+.edit .c:not(.offc) .tm{border-radius:11px 0 0 11px}
+.c-drag{position:absolute;top:-11px;left:50%;transform:translateX(-50%);z-index:2;width:52px;height:20px;border-radius:99px;display:flex;align-items:center;justify-content:center;background:var(--card);border:1.5px solid color-mix(in srgb,var(--ac) 65%,var(--bd));box-shadow:0 2px 6px rgba(0,0,0,.12);touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none;transition:transform .16s ease,border-color .16s ease,background-color .16s ease,box-shadow .16s ease}
+.c-drag::after{content:"";position:absolute;inset:-8px -14px}
+.c-drag i{display:block;width:24px;height:3.5px;border-radius:99px;background:var(--mut);opacity:.75;transition:width .16s ease,background-color .16s ease,opacity .16s ease}
+.c-drag.arming{transform:translateX(-50%) scale(1.1);border-color:var(--ac);background:color-mix(in srgb,var(--ac) 14%,var(--card));box-shadow:0 3px 10px color-mix(in srgb,var(--ac) 28%,transparent)}
+.c-drag.arming i{width:30px;background:var(--ac);opacity:1}
 .c.drag-src{opacity:.28 !important;transform:scale(.98)}
 body.mob-dragging .scroller{overflow:hidden !important;touch-action:none}
 
