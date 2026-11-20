@@ -568,11 +568,17 @@ export function taskFieldsHtml(v) {
     '<label class="fl">Przedmiot<select name="subj">' +
     selOpts(subjPairs(), v.subj || "") +
     "</select></label>" +
-    '<div class="qdates" data-qdate role="group" aria-label="Szybki wybór terminu">' +
-    '<button type="button" data-qd="today">Dziś</button>' +
-    '<button type="button" data-qd="tomorrow">Jutro</button>' +
-    '<button type="button" data-qd="week">Za tydzień</button>' +
-    '<button type="button" data-qd="next" hidden>Następne zajęcia</button>' +
+    '<div class="qdates' +
+    (v.isEdit ? " qdates-edit" : "") +
+    '" data-qdate role="group" aria-label="Szybki wybór terminu"' +
+    (v.isEdit ? " hidden" : "") +
+    ">" +
+    (v.isEdit
+      ? '<button type="button" data-qd="next" hidden>Przełóż na następne zajęcia</button>'
+      : '<button type="button" data-qd="today">Dziś</button>' +
+        '<button type="button" data-qd="tomorrow">Jutro</button>' +
+        '<button type="button" data-qd="week">Za tydzień</button>' +
+        '<button type="button" data-qd="next" hidden>Następne zajęcia</button>') +
     "</div>" +
     '<div class="two"><label class="fl">Termin<input type="date" name="due" value="' +
     esc(v.due || "") +
@@ -633,13 +639,24 @@ export function bindTaskForm(form, isNew) {
   const syncNextChip = () => {
     if (!nextBtn || !E.subj) return;
     const sname = subjNameFromVal(E.subj.value);
-    nextOcc = sname ? nextOccurrenceBySubject(cache.plan, sname, new Date()) : null;
+    let from = new Date();
+    if (!isNew && E.due && E.due.value) {
+      const curDue = fromDK(E.due.value);
+      const td = day0(new Date());
+      if (curDue && curDue >= td) {
+        from = new Date(curDue.getFullYear(), curDue.getMonth(), curDue.getDate() + 1, 0, 0);
+      }
+    }
+    nextOcc = sname ? nextOccurrenceBySubject(cache.plan, sname, from) : null;
     if (nextOcc) {
       const wdTxt = nextOcc.date.toLocaleDateString("pl-PL", { weekday: "short", day: "numeric", month: "short" });
-      nextBtn.textContent = "Następne zajęcia (" + wdTxt + ", " + fmtT(nextOcc.s) + ")";
+      nextBtn.textContent =
+        (isNew ? "Następne zajęcia (" : "Przełóż na następne zajęcia (") + wdTxt + ", " + fmtT(nextOcc.s) + ")";
       nextBtn.hidden = false;
+      if (!isNew && qBox) qBox.hidden = false;
     } else {
       nextBtn.hidden = true;
+      if (!isNew && qBox) qBox.hidden = true;
     }
   };
 
@@ -651,6 +668,7 @@ export function bindTaskForm(form, isNew) {
   const remCtrl = remBind(form, taskEnd(form), isNew);
 
   if (E.subj) E.subj.addEventListener("change", syncNextChip);
+  if (E.due && !isNew) E.due.addEventListener("change", syncNextChip);
   if (E.time) {
     E.time.addEventListener("input", syncTimeClear);
     E.time.addEventListener("change", syncTimeClear);
@@ -675,6 +693,7 @@ export function bindTaskForm(form, isNew) {
         E.due.value = nextOcc.dk;
         E.time.value = nextOcc.s;
         syncTimeClear();
+        if (!isNew) syncNextChip();
       }
       remCtrl.update();
     });
@@ -926,6 +945,7 @@ export function openTask(id, opts = {}) {
         time: t.time || "",
         rem: t.rem,
         cat,
+        isEdit: true,
       }) +
       '<div class="acts"><button type="submit" class="btn pri">Zapisz</button><button type="button" class="btn" data-sh="' +
       (back ? "tkback" : "close") +
