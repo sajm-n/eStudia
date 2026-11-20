@@ -221,6 +221,10 @@ export function validatePlan(raw) {
       e.off = true;
     } else {
       let any = false;
+      if (x.toDate !== undefined && x.toDate !== null && x.toDate !== "" && x.toDate !== x.date && fromDK(x.toDate)) {
+        e.toDate = x.toDate;
+        any = true;
+      }
       if (x.s !== undefined) { const t = normT(x.s); if (t) { e.s = t; any = true; } }
       if (x.e !== undefined) { const t = normT(x.e); if (t) { e.e = t; any = true; } }
       if (x.room !== undefined && typeof x.room === "string") { e.room = str(x.room, 80); any = true; }
@@ -385,6 +389,25 @@ export function validatePlan(raw) {
     });
   }
 
+  /* Nadpisania całych dni: przeniesienie planu z innego dnia (fromDate), zamiana dni (swap) lub dzień wolny (off) */
+  const dovRaw = Array.isArray(raw.dayOverrides) ? raw.dayOverrides.slice(0, 500) : [];
+  const dovByDate = new Map();
+  for (const x of dovRaw) {
+    if (!x || typeof x !== "object" || !fromDK(x.date)) continue;
+    const o = { date: x.date };
+    if (x.off === true) {
+      o.off = true;
+    } else if (typeof x.fromDate === "string" && x.fromDate !== x.date && fromDK(x.fromDate)) {
+      o.fromDate = x.fromDate;
+    } else {
+      continue;
+    }
+    const note = str(x.note, 120);
+    if (note) o.note = note;
+    dovByDate.set(x.date, o);
+  }
+  const dayOverrides = [...dovByDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+
   /* Domyślne terminy powiadomień (osobno dla zadań stacjonarnych i online); brak lub błąd = wartości startowe */
   const rn = raw.notif && typeof raw.notif === "object" ? raw.notif : {};
   const notif = {
@@ -408,8 +431,15 @@ export function validatePlan(raw) {
   if (Object.keys(absLimits).length) outPlan.absLimits = absLimits;
   if (archivedTasks.length) outPlan.archivedTasks = archivedTasks;
   if (semesters.length) outPlan.semesters = semesters;
+  if (dayOverrides.length) outPlan.dayOverrides = dayOverrides;
 
   return { ok: true, plan: outPlan };
+}
+
+/* ----- Nadpisania całych dni (przeniesienie / zamiana / dzień wolny) ----- */
+export function dayOverrideOf(plan, dateKey) {
+  const list = Array.isArray(plan && plan.dayOverrides) ? plan.dayOverrides : [];
+  return list.find((x) => x.date === dateKey) || null;
 }
 
 /* ----- Nieobecności na zajęciach ----- */
@@ -446,21 +476,60 @@ export const isPre = (plan, d) => day0(d) < fromDK(plan.start);
 
 export function itemsFor(plan, d) {
   const key = dk(d);
-  const w = weekOf(plan, d);
-  const dw = wd(d);
+  const ov = dayOverrideOf(plan, key);
   const out = [];
-  for (const c of plan.classes) {
-    const ok = c.date ? c.date === key : c.wd === dw && (c.weeks === "all" || c.weeks === w);
-    if (!ok) continue;
-    const ex = plan.exceptions.find((x) => x.cid === c.id && x.date === key) || null;
-    const eff = Object.assign({}, c);
-    if (ex && !ex.off) {
-      for (const k of ["s", "e", "room", "person"]) {
-        if (ex[k] !== undefined) eff[k] = ex[k];
+
+  /* 1. Zajęcia z tego dnia (albo z dnia źródłowego przy dayOverride.fromDate; brak przy dayOverride.off) */
+  if (!(ov && ov.off)) {
+    const srcDate = ov && ov.fromDate ? fromDK(ov.fromDate) || d : d;
+    const srcKey = dk(srcDate);
+    const w = weekOf(plan, srcDate);
+    const dw = wd(srcDate);
+    for (const c of plan.classes) {
+      const ok = c.date ? c.date === srcKey : c.wd === dw && (c.weeks === "all" || c.weeks === w);
+      if (!ok) continue;
+      const ex = plan.exceptions.find((x) => x.cid === c.id && x.date === srcKey) || null;
+      if (ex && ex.toDate) continue; /* przeniesione jednorazowo na inny dzień */
+      const eff = Object.assign({}, c);
+      if (ex && !ex.off) {
+        for (const k of ["s", "e", "room", "person"]) {
+          if (ex[k] !== undefined) eff[k] = ex[k];
+        }
       }
+      out.push({
+        id: c.id,
+        date: key,
+        origDate: srcKey,
+        c: eff,
+        base: c,
+        ex,
+        off: !!(ex && ex.off),
+        fromDay: ov && ov.fromDate ? ov.fromDate : "",
+      });
     }
-    out.push({ id: c.id, date: key, c: eff, base: c, ex, off: !!(ex && ex.off) });
   }
+
+  /* 2. Zajęcia przeniesione jednorazowo NA ten dzień (exceptions z toDate === key) */
+  for (const ex of plan.exceptions) {
+    if (ex.toDate !== key) continue;
+    const c = plan.classes.find((x) => x.id === ex.cid);
+    if (!c) continue;
+    const eff = Object.assign({}, c);
+    for (const k of ["s", "e", "room", "person"]) {
+      if (ex[k] !== undefined) eff[k] = ex[k];
+    }
+    out.push({
+      id: c.id,
+      date: key,
+      origDate: ex.date,
+      c: eff,
+      base: c,
+      ex,
+      off: false,
+      movedFrom: ex.date,
+    });
+  }
+
   out.sort((a, b) => mn(a.c.s) - mn(b.c.s) || mn(a.c.e) - mn(b.c.e));
   return out;
 }

@@ -17,6 +17,7 @@ import {
   absencesOf,
   isAbsentOn,
   absenceLimit,
+  dayOverrideOf,
   isLate,
   fromDK,
   dk,
@@ -220,4 +221,51 @@ test("absences, absLimits, archivedTasks i semesters: walidacja i helpery v2.4",
   assert.equal(v.plan.archivedTasks[0].label, "Matematyka I");
   assert.equal(v.plan.semesters.length, 1);
   assert.equal(v.plan.semesters[0].name, "Semestr 0");
+});
+
+test("dayOverrides (nadpisanie, zamiana, dzień wolny) oraz jednorazowe przeniesienie zajęć (toDate)", () => {
+  // 2026-11-11 = środa (tydzień A: c09, c10, c11), 2026-11-13 = piątek (c13, c14)
+  const raw = {
+    ...DEFAULT_PLAN,
+    dayOverrides: [
+      { date: "2026-11-11", off: true, note: "Przeniesiono na 13 listopada" },
+      { date: "2026-11-13", fromDate: "2026-11-11" },
+    ],
+    exceptions: [
+      // Przenieś poniedziałkowe c01 (2026-11-16) jednorazowo na czwartek (2026-11-19) na 14:00-17:15
+      { id: "ex1", cid: "c01", date: "2026-11-16", toDate: "2026-11-19", s: "14:00", e: "17:15" },
+    ],
+  };
+  const v = validatePlan(raw);
+  assert.equal(v.ok, true);
+  const p = v.plan;
+
+  assert.equal(dayOverrideOf(p, "2026-11-11").off, true);
+  assert.equal(dayOverrideOf(p, "2026-11-13").fromDate, "2026-11-11");
+
+  // Środa 11.11 pusta, piątek 13.11 ma zajęcia ze środy 11.11, a kolejny piątek 20.11 bez zmian!
+  assert.deepEqual(itemsFor(p, fromDK("2026-11-11")).map((x) => x.id), []);
+  assert.deepEqual(itemsFor(p, fromDK("2026-11-13")).map((x) => x.id), ["c09", "c10", "c11"]);
+  assert.deepEqual(itemsFor(p, fromDK("2026-11-20")).map((x) => x.id), ["c13", "c14"]);
+
+  // Zamiana dni (swap): 2026-11-11 ↔ 2026-11-13
+  const pSwap = validatePlan({
+    ...DEFAULT_PLAN,
+    dayOverrides: [
+      { date: "2026-11-11", fromDate: "2026-11-13" },
+      { date: "2026-11-13", fromDate: "2026-11-11" },
+    ],
+  }).plan;
+  assert.deepEqual(itemsFor(pSwap, fromDK("2026-11-11")).map((x) => x.id), ["c13", "c14"]);
+  assert.deepEqual(itemsFor(pSwap, fromDK("2026-11-13")).map((x) => x.id), ["c09", "c10", "c11"]);
+
+  // Jednorazowe przeniesienie pojedynczych zajęć (c01 z 16.11 na 19.11)
+  assert.equal(itemsFor(p, fromDK("2026-11-16")).some((x) => x.id === "c01"), false);
+  const thu = itemsFor(p, fromDK("2026-11-19"));
+  const moved = thu.find((x) => x.id === "c01");
+  assert.ok(moved);
+  assert.equal(moved.movedFrom, "2026-11-16");
+  assert.equal(moved.origDate, "2026-11-16");
+  assert.equal(moved.c.s, "14:00");
+  assert.equal(moved.c.e, "17:15");
 });

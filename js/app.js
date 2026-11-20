@@ -18,6 +18,8 @@ import {
   openForm,
   openOverride,
   openChooser,
+  openDayMove,
+  resetDayOverride,
   toggleCal,
   shiftDay,
   shiftWeek,
@@ -253,19 +255,23 @@ function shAction(a) {
     case "override":
       openOverride(cid, date);
       break;
-    case "off":
+    case "off": {
+      const targetDate = ui.ctx.origDate || date;
       closeSheet();
       change((p) => {
-        p.exceptions = p.exceptions.filter((x) => !(x.cid === cid && x.date === date));
-        p.exceptions.push({ id: uid(), cid, date, off: true });
+        p.exceptions = p.exceptions.filter((x) => !(x.cid === cid && x.date === targetDate));
+        p.exceptions.push({ id: uid(), cid, date: targetDate, off: true });
       }, "Odwołano zajęcia w dniu " + dl(fromDK(date)));
       break;
-    case "resetex":
+    }
+    case "resetex": {
+      const targetDate = ui.ctx.origDate || date;
       closeSheet();
       change((p) => {
-        p.exceptions = p.exceptions.filter((x) => !(x.cid === cid && x.date === date));
+        p.exceptions = p.exceptions.filter((x) => !(x.cid === cid && x.date === targetDate));
       }, "Przywrócono plan na ten dzień");
       break;
+    }
     case "del": {
       const c = cache.plan.classes.find((x) => x.id === cid);
       if (!c) break;
@@ -475,6 +481,8 @@ document.addEventListener("click", (e) => {
   else if (k === "nt") { askNotif(); return; }
   else if (k === "set") { openSettings(); return; }
   else if (k === "add") { openForm({ mode: "new" }); return; }
+  else if (k === "daymove") { openDayMove(v); return; }
+  else if (k === "dayreset") { resetDayOverride(v); return; }
   else if (k === "chip") {
     if (conflict) openConflict();
     else openSettings();
