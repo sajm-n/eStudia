@@ -1,6 +1,6 @@
 /* ===== Zmiany jednorazowe zajęć, przenoszenie/zamiana całych dni i wybór akcji w trybie edycji ===== */
 
-import { dk, fromDK, normT, mn, fmtT, uid, itemsFor, tasksForClass } from "../core.js";
+import { wd, dk, fromDK, normT, mn, fmtT, uid, itemsFor, tasksForClass } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, items, dl, dlong, t5, ui, app } from "../state.js";
 import { openSheet, closeSheet, change } from "./sheet.js";

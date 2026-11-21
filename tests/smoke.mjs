@@ -169,7 +169,20 @@ try {
     const devExited = document.getElementById("devBar").hidden && localStorage.getItem("estudia.dev.v1") === null;
 
     document.getElementById("nv-plan").click();
-    return { hasGrid, hasExBtn, exTitle, hasSubjAdd, hasMorningOpt, hasDevOn, devBarShown, devPlanLoaded, realUntouched, devExited };
+    await new Promise(r => setTimeout(r, 120));
+    document.getElementById("ed").click();
+    await new Promise(r => setTimeout(r, 120));
+    const dmBtn = document.querySelector(".wg-d[data-a^='daymove:']");
+    let dayMoveOpens = false;
+    if (dmBtn) {
+      dmBtn.click();
+      await new Promise(r => setTimeout(r, 120));
+      dayMoveOpens = document.getElementById("shT").textContent === "Przenieś lub zamień dzień";
+      document.querySelector("[data-sh=close]").click();
+      await new Promise(r => setTimeout(r, 100));
+    }
+    document.getElementById("ed").click();
+    return { hasGrid, hasExBtn, exTitle, hasSubjAdd, hasMorningOpt, hasDevOn, devBarShown, devPlanLoaded, realUntouched, devExited, dayMoveOpens };
   })()`);
 
   // 2. Mobile viewport: kalendarz #cal i render planu bez błędów
@@ -193,6 +206,7 @@ try {
     !desk.devPlanLoaded ||
     !desk.realUntouched ||
     !desk.devExited ||
+    !desk.dayMoveOpens ||
     mob.calBtns < 7
   ) {
     throw new Error("Niepowodzenie testu dymnego: " + JSON.stringify({ desk, mob }));
