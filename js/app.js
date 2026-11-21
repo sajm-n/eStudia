@@ -2,7 +2,7 @@
 
 import { APP_VERSION, TABS, TAB_KEY, TV_KEY, HD_KEY, NOTIF_DEF, DEFAULT_PLAN } from "./config.js";
 import { day0, same, dk, fromDK, clone, uid, serialize, absenceLimit } from "./core.js";
-import { cache, conflict, hooks, commit, syncAll, resolveConflict, clearTokenState } from "./sync.js";
+import { cache, conflict, hooks, isDevMode, enterDevMode, loadDevPlan, exitDevMode, commit, syncAll, resolveConflict, clearTokenState } from "./sync.js";
 import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushState } from "./push.js";
 import { $, isDesk, mqD, dl, lsSet, setMsg, getTheme, applyTheme, ui, app } from "./state.js";
 import { closeSheet, toast, ask, resolveAsk, change, playGo, popCb } from "./ui/sheet.js";
@@ -326,6 +326,27 @@ function shAction(a) {
     case "import":
       $("impf").click();
       break;
+    case "devon":
+      enterDevMode();
+      openSettings();
+      toast("Włączono tryb deweloperski (odizolowany playground)");
+      break;
+    case "devload":
+      $("devImpf").click();
+      break;
+    case "devexport":
+      download("plan-testowy-" + dk(new Date()) + ".json", serialize(cache.plan));
+      setMsg("devMsg", "Plik z planem testowym został pobrany.", "ok");
+      break;
+    case "devexit":
+      if (exitDevMode()) {
+        closeSheet();
+        renderSync();
+        render();
+        toast("Przywrócono normalny plan");
+        trySync();
+      }
+      break;
     case "reset":
       ask(
         "Przywrócić plan domyślny? Twoje zmiany zostaną zastąpione (będzie można je cofnąć tuż po zmianie).",
@@ -510,6 +531,17 @@ document.addEventListener("click", (e) => {
     ui.mo = new Date(d.getFullYear(), d.getMonth(), 1);
     ui.mcalOpen = false;
   }
+  else if (k === "devload") { $("devImpf").click(); return; }
+  else if (k === "devexit") {
+    if (exitDevMode()) {
+      closeSheet();
+      renderSync();
+      render();
+      toast("Przywrócono normalny plan");
+      trySync();
+    }
+    return;
+  }
   else if (k === "chip") {
     if (conflict) openConflict();
     else openSettings();
@@ -624,12 +656,50 @@ function handleDeepLink() {
   } catch (e) {}
 }
 
+/* Wczytywanie pliku JSON do odizolowanego trybu deweloperskiego (playground) */
+const devImpf = $("devImpf");
+if (devImpf) {
+  devImpf.onchange = () => {
+    const f = devImpf.files && devImpf.files[0];
+    devImpf.value = "";
+    if (!f) return;
+    if (f.size > 2e6) {
+      setMsg("devMsg", "Plik jest za duży.", "bad");
+      toast("Plik jest za duży.");
+      return;
+    }
+    const r = new FileReader();
+    r.onload = () => {
+      let raw;
+      try {
+        raw = JSON.parse(String(r.result));
+      } catch (e) {
+        setMsg("devMsg", "Plik nie jest poprawnym JSON-em.", "bad");
+        toast("Plik nie jest poprawnym JSON-em.");
+        return;
+      }
+      const res = loadDevPlan(raw);
+      if (!res.ok) {
+        setMsg("devMsg", res.error, "bad");
+        toast("Błędny plik planu: " + res.error);
+        return;
+      }
+      closeSheet();
+      renderSync();
+      render();
+      toast("Wczytano plan testowy: " + f.name);
+    };
+    r.readAsText(f);
+  };
+}
+
 /* Inicjalizacja */
 applyTheme(getTheme());
 initOlForm();
 initTaskFilters();
 initDrag();
 initPlanTooltips();
+renderSync();
 render();
 handleDeepLink();
 

@@ -2,13 +2,14 @@
 
 import { APP_VERSION, WD_IN } from "../config.js";
 import { pad, day0, wd, dk, fromDK, normT, fmtT, mondayOf, validatePlan, ruleStart, uid, clone } from "../core.js";
-import { cfg, cache, sync, conflict, saveCfg, resetSyncTarget, commit, syncAll, testToken } from "../sync.js";
+import { cfg, cache, sync, conflict, isDevMode, saveCfg, resetSyncTarget, commit, syncAll, testToken } from "../sync.js";
 import { ensurePush, renderNotifState, renderPushDiag } from "../push.js";
 import { $, esc, dl, hm, selOpts, setMsg, getTheme, ui } from "../state.js";
 import { openSheet, closeSheet, toast, ask, change } from "./sheet.js";
 import { fmtDur, taskLabelOf, catChip, taskMeta } from "./tasks.js";
 
 export function syncText() {
+  if (isDevMode()) return ["Tryb dev (playground)", "warn"];
   const s = sync.state;
   const d = cache.dirty;
   const t = !!cfg.token;
@@ -37,6 +38,9 @@ export function renderSync() {
   }
   const st = $("cfgStat");
   if (st) st.textContent = r[0] + (sync.msg ? " — " + sync.msg : "");
+  const db = $("devBar");
+  if (db) db.hidden = !isDevMode();
+  document.body.classList.toggle("devmode", isDevMode());
 }
 
 export function download(name, text) {
@@ -266,6 +270,13 @@ export function openSettings() {
       '<div class="acts"><button type="button" class="btn" data-sh="export">Eksportuj plan</button><button type="button" class="btn" data-sh="import">Importuj plan</button><button type="button" class="btn dng" data-sh="reset">Przywróć plan domyślny</button></div>' +
       '<input type="file" id="impf" accept=".json,application/json" hidden>' +
       '<p id="bkMsg" class="msg" role="status" style="margin-top:8px"></p>' +
+      '<h3 class="sec">Tryb deweloperski (playground)</h3>' +
+      '<p class="hint">Odizolowane środowisko testowe. Wczytane pliki i wprowadzone zmiany zapisują się osobno i nigdy nie trafiają na GitHub. W każdej chwili wrócisz do swojego normalnego planu.</p>' +
+      (isDevMode()
+        ? '<p class="msg warn" role="status">Tryb deweloperski jest AKTYWNY — pracujesz na odizolowanej kopii testowej.</p>' +
+          '<div class="acts"><button type="button" class="btn" data-sh="devload">Wczytaj inny plik testowy (.json)</button><button type="button" class="btn" data-sh="devexport">Eksportuj plan testowy</button><button type="button" class="btn pri" data-sh="devexit">Wyłącz i wróć do normalnego planu</button></div>'
+        : '<div class="acts"><button type="button" class="btn" data-sh="devon">Włącz tryb deweloperski</button><button type="button" class="btn" data-sh="devload">Wczytaj plan testowy z pliku (.json)</button></div>') +
+      '<p id="devMsg" class="msg" role="status" style="margin-top:8px"></p>' +
       '<p class="hint" style="margin-top:14px"><b>Wersja aplikacji: ' +
       APP_VERSION +
       "</b></p>" +

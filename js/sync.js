@@ -1,7 +1,14 @@
 /* ===== Ustawienia, pamięć lokalna, synchronizacja z GitHub ===== */
 
-import { CFG_DEF, CFK, LSK, DEFAULT_PLAN } from "./config.js";
+import { CFG_DEF, CFK, LSK, DEV_KEY, DEV_LSK, DEFAULT_PLAN } from "./config.js";
 import { clone, serialize, validatePlan } from "./core.js";
+
+let devMode = false;
+try {
+  devMode = localStorage.getItem(DEV_KEY) === "1";
+} catch (e) {}
+
+export const isDevMode = () => devMode;
 
 export function loadCfg() {
   const c = Object.assign({}, CFG_DEF);
@@ -16,7 +23,7 @@ export function loadCfg() {
   return c;
 }
 
-export function loadCache() {
+function loadRealCache() {
   try {
     const o = JSON.parse(localStorage.getItem(LSK));
     const v = validatePlan(o && o.plan);
@@ -27,6 +34,18 @@ export function loadCache() {
   return { plan: validatePlan(clone(DEFAULT_PLAN)).plan, sha: null, dirty: false };
 }
 
+export function loadCache() {
+  if (devMode) {
+    try {
+      const o = JSON.parse(localStorage.getItem(DEV_LSK));
+      const v = validatePlan(o && o.plan);
+      if (v.ok) return { plan: v.plan, sha: null, dirty: false };
+    } catch (e) {}
+    return { plan: clone(loadRealCache().plan), sha: null, dirty: false };
+  }
+  return loadRealCache();
+}
+
 export let cfg = loadCfg();
 export let cache = loadCache();
 export let conflict = null;
@@ -35,12 +54,11 @@ let pushAgain = false;
 let pulling = false;
 let pushTimer = 0;
 
-export let sync = { state: "idle", msg: "", at: 0 };
+export let sync = { state: devMode ? "dev" : "idle", msg: "", at: 0 };
 export const hooks = { sync() {}, changed() {}, conflict() {}, adopted() {} };
 
-/* Tryb pracy: bez tokena = lokalny (tylko pamięć tej przeglądarki, żadnych zapytań do serwera);
-   z tokenem = serwerowy (pełna synchronizacja z GitHubem) */
-export const mode = () => (cfg.token ? "cloud" : "local");
+/* Tryb pracy: "dev" = odizolowany playground; bez tokena = lokalny; z tokenem = serwerowy */
+export const mode = () => (devMode ? "dev" : cfg.token ? "cloud" : "local");
 
 export function setSync(state, msg) {
   sync = { state, msg: msg || "", at: Date.now() };
@@ -49,8 +67,59 @@ export function setSync(state, msg) {
 
 export function persist() {
   try {
-    localStorage.setItem(LSK, JSON.stringify({ plan: cache.plan, sha: cache.sha, dirty: cache.dirty }));
+    if (devMode) {
+      localStorage.setItem(DEV_LSK, JSON.stringify({ plan: cache.plan }));
+    } else {
+      localStorage.setItem(LSK, JSON.stringify({ plan: cache.plan, sha: cache.sha, dirty: cache.dirty }));
+    }
   } catch (e) {}
+}
+
+/* Odizolowany tryb deweloperski (playground): prawdziwy plan (LSK) i GitHub są całkowicie nietknięte */
+export function enterDevMode(rawPlan) {
+  clearTimeout(pushTimer);
+  let nextPlan = null;
+  if (rawPlan !== undefined) {
+    const v = validatePlan(rawPlan);
+    if (!v.ok) return { ok: false, error: v.error };
+    nextPlan = v.plan;
+  } else if (!devMode) {
+    nextPlan = clone(cache.plan);
+  }
+  devMode = true;
+  conflict = null;
+  try {
+    localStorage.setItem(DEV_KEY, "1");
+  } catch (e) {}
+  if (nextPlan) cache.plan = nextPlan;
+  cache.sha = null;
+  cache.dirty = false;
+  persist();
+  setSync("dev");
+  hooks.changed();
+  return { ok: true, plan: cache.plan };
+}
+
+export function loadDevPlan(rawPlan) {
+  return enterDevMode(rawPlan);
+}
+
+export function exitDevMode() {
+  if (!devMode) return false;
+  clearTimeout(pushTimer);
+  devMode = false;
+  conflict = null;
+  try {
+    localStorage.removeItem(DEV_KEY);
+    localStorage.removeItem(DEV_LSK);
+  } catch (e) {}
+  const real = loadRealCache();
+  cache.plan = real.plan;
+  cache.sha = real.sha;
+  cache.dirty = real.dirty;
+  setSync(cfg.token ? "idle" : "local");
+  hooks.changed();
+  return true;
 }
 
 export function saveCfg(c) {
@@ -61,6 +130,7 @@ export function saveCfg(c) {
 }
 
 export function resetSyncTarget() {
+  if (devMode) return;
   cache.sha = null;
   conflict = null;
   persist();
@@ -70,7 +140,7 @@ export function clearTokenState() {
   saveCfg(Object.assign({}, cfg, { token: "" }));
   conflict = null;
   clearTimeout(pushTimer);
-  setSync("local");
+  setSync(devMode ? "dev" : "local");
 }
 
 export const b64e = (s) => {
@@ -109,14 +179,14 @@ export function ghFetch(method, body) {
   return ghFile(cfg.path, method, body, cfg.branch);
 }
 
-/* Zapis zmiany planu: walidacja, zapis lokalny, odroczone wysłanie na GitHuba */
+/* Zapis zmiany planu: walidacja, zapis lokalny, odroczone wysłanie na GitHuba (zablokowane w trybie dev) */
 export function commit(p) {
   const v = validatePlan(p);
   if (!v.ok) throw new Error(v.error);
   const np = v.plan;
   np.rev = Date.now();
   cache.plan = np;
-  cache.dirty = true;
+  cache.dirty = !devMode;
   persist();
   hooks.changed();
   schedulePush();
@@ -125,7 +195,7 @@ export function commit(p) {
 
 export function schedulePush() {
   clearTimeout(pushTimer);
-  if (!cfg.token || conflict) {
+  if (devMode || !cfg.token || conflict) {
     hooks.sync();
     return;
   }
@@ -134,6 +204,10 @@ export function schedulePush() {
 }
 
 export async function pull() {
+  if (devMode) {
+    setSync("dev");
+    return;
+  }
   if (!cfg.token) {
     setSync("local");
     return;
@@ -215,7 +289,7 @@ export async function pull() {
 
 export async function push() {
   clearTimeout(pushTimer);
-  if (!cfg.token || conflict) return;
+  if (devMode || !cfg.token || conflict) return;
   if (pushing) { pushAgain = true; return; }
   if (!cache.dirty) return;
   pushing = true;

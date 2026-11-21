@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="app-version" content="2.7.0">
-<!-- Zgodność wsteczna dla samoaktualizacji ze starszej wersji 2.0: const APP_VERSION="2.7.0" -->
+<meta name="app-version" content="2.8.0">
+<!-- Zgodność wsteczna dla samoaktualizacji ze starszej wersji 2.0: const APP_VERSION="2.8.0" -->
 <title>eStudia</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -52,6 +52,14 @@
   <p class="sub" id="sub" data-a="mcal:sub"></p>
   <button class="chip" id="chip" type="button" data-a="chip:"><i></i><span id="chipT"></span></button>
 </div>
+<div id="devBar" class="devbar" hidden>
+  <span><b>Tryb deweloperski</b> · odizolowany playground (bez zapisu na GitHub)</span>
+  <div class="devbar-acts">
+    <button type="button" data-a="devload:">Wczytaj plik</button>
+    <button type="button" class="pri" data-a="devexit:">Wróć do normalnego planu</button>
+  </div>
+</div>
+<input type="file" id="devImpf" accept=".json,application/json" hidden>
 <div id="alerts" hidden></div>
 <section class="view" id="v-plan" aria-label="Plan zajęć">
   <div id="ahead" class="ahead" hidden></div>

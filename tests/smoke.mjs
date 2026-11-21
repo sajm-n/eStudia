@@ -137,11 +137,39 @@ try {
     document.querySelector("[data-a='set:']").click();
     await new Promise(r => setTimeout(r, 120));
     const hasMorningOpt = !!document.querySelector("input[name='morningOn']");
-    document.querySelector("[data-sh=close]").click();
-    await new Promise(r => setTimeout(r, 100));
+    const hasDevOn = !!document.querySelector("[data-sh='devon']");
+
+    // 1b. Tryb deweloperski (playground): włącz, wczytaj testowy JSON, sprawdź izolację i wyjdź
+    const realBefore = localStorage.getItem("plan.cache.v1");
+    document.querySelector("[data-sh='devon']").click();
+    await new Promise(r => setTimeout(r, 120));
+    const devBarShown = !document.getElementById("devBar").hidden;
+
+    const testPlan = {
+      v: 1,
+      rev: 1,
+      start: "2026-10-05",
+      startWeek: "B",
+      classes: [{ id: "dev1", name: "Testowy przedmiot XYZ", type: "l", wd: 0, weeks: "all", s: "10:00", e: "11:30", room: "DEV-1", person: "" }],
+      exceptions: [],
+      subjects: [],
+      tasks: [],
+    };
+    const dt = new DataTransfer();
+    dt.items.add(new File([JSON.stringify(testPlan)], "test-plan.json", { type: "application/json" }));
+    const inp = document.getElementById("devImpf");
+    inp.files = dt.files;
+    inp.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise(r => setTimeout(r, 180));
+    const devPlanLoaded = (localStorage.getItem("estudia.dev.plan.v1") || "").includes("Testowy przedmiot XYZ");
+    const realUntouched = localStorage.getItem("plan.cache.v1") === realBefore;
+
+    document.querySelector("[data-a='devexit:']").click();
+    await new Promise(r => setTimeout(r, 120));
+    const devExited = document.getElementById("devBar").hidden && localStorage.getItem("estudia.dev.v1") === null;
 
     document.getElementById("nv-plan").click();
-    return { hasGrid, hasExBtn, exTitle, hasSubjAdd, hasMorningOpt };
+    return { hasGrid, hasExBtn, exTitle, hasSubjAdd, hasMorningOpt, hasDevOn, devBarShown, devPlanLoaded, realUntouched, devExited };
   })()`);
 
   // 2. Mobile viewport: kalendarz #cal i render planu bez błędów
@@ -154,7 +182,19 @@ try {
 
   ws.close();
 
-  if (!desk.hasGrid || !desk.hasExBtn || desk.exTitle !== "Sesja / Kolokwia" || !desk.hasSubjAdd || !desk.hasMorningOpt || mob.calBtns < 7) {
+  if (
+    !desk.hasGrid ||
+    !desk.hasExBtn ||
+    desk.exTitle !== "Sesja / Kolokwia" ||
+    !desk.hasSubjAdd ||
+    !desk.hasMorningOpt ||
+    !desk.hasDevOn ||
+    !desk.devBarShown ||
+    !desk.devPlanLoaded ||
+    !desk.realUntouched ||
+    !desk.devExited ||
+    mob.calBtns < 7
+  ) {
     throw new Error("Niepowodzenie testu dymnego: " + JSON.stringify({ desk, mob }));
   }
   if (errors.length) {

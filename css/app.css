@@ -652,6 +652,17 @@ body.mob-dragging .scroller{overflow:hidden !important;touch-action:none}
 .ex-acts{display:flex;gap:8px}
 .ex-acts .btn{padding:6px 12px;font-size:13px}
 
+/* ===== v2.8: Tryb deweloperski (odizolowany playground) ===== */
+.devbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:9px 12px;border-radius:12px;background:color-mix(in srgb,var(--warn) 14%,var(--card));border:1.5px solid color-mix(in srgb,var(--warn) 55%,var(--bd));font-size:13px;line-height:1.35}
+.devbar[hidden]{display:none}
+.devbar b{color:var(--warn)}
+.devbar-acts{display:flex;gap:6px;flex-wrap:wrap}
+.devbar-acts button{padding:5px 10px;border-radius:8px;font-size:12.5px;font-weight:700;background:var(--card);border:1px solid var(--bd);color:var(--tx)}
+.devbar-acts button:hover{border-color:var(--warn);color:var(--warn)}
+.devbar-acts button.pri{background:var(--warn);border-color:var(--warn);color:#fff}
+.devbar-acts button.pri:hover{filter:brightness(1.06);color:#fff}
+
+
 
 
 
