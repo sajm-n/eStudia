@@ -26,7 +26,7 @@ const now = process.env.NOW ? new Date(process.env.NOW) : new Date();
 
 const vapidPublic = process.env.VAPID_PUBLIC_KEY || VAPID_PUBLIC;
 const vapidPrivateRaw = process.env.VAPID_PRIVATE_KEY || "";
-const subject = process.env.VAPID_SUBJECT || "https://sajm-n.github.io/itplanzajec/";
+const subject = process.env.VAPID_SUBJECT || "https://sajm-n.github.io/eStudia/";
 if (!vapidPublic) { console.error("Brak klucza publicznego VAPID w js/config.js."); process.exit(1); }
 
 /* Tryb --check (uruchamiany na starcie pętli): sprawdza, czy sekret pasuje do klucza publicznego. */

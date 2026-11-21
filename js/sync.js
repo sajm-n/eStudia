@@ -18,6 +18,10 @@ export function loadCfg() {
       for (const k in CFG_DEF) {
         if (typeof o[k] === "string") c[k] = o[k];
       }
+      if (c.owner === "sajm-n" && c.repo === "itplanzajec") {
+        c.repo = "eStudia";
+        localStorage.setItem(CFK, JSON.stringify(c));
+      }
     }
   } catch (e) {}
   return c;

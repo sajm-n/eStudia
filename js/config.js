@@ -1,6 +1,6 @@
 /* ===== Stałe i konfiguracja aplikacji eStudia ===== */
 
-export const APP_VERSION = "2.8.0";
+export const APP_VERSION = "2.8.1";
 
 export const TYPES = { w: "Wykład", l: "Laboratorium", c: "Ćwiczenia", x: "Inne" };
 export const TYPE_ORDER = "wlcx";
@@ -65,7 +65,7 @@ export const DEV_LSK = "estudia.dev.plan.v1";
 export const CFG_DEF = {
   token: "",
   owner: "sajm-n",
-  repo: "itplanzajec",
+  repo: "eStudia",
   path: "plan.json",
   branch: "main",
 };
