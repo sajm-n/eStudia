@@ -1,8 +1,8 @@
 :root{color-scheme:light dark;--bg:#eef1f6;--card:#fff;--tx:#17202e;--mut:#5d6878;--bd:#d9dfe9;--ac:#1f3a8a;--acx:#fff;
---wyk:#b4c7e7;--lab:#ffed9f;--cw:#a9d18e;--oth:#cfd4dc;--tint:#17202e;--ok:#1b6e3a;--warn:#8a5a00;--bad:#b3261e;--ovl:rgba(16,21,31,.45);
+--wyk:#b4c7e7;--lab:#ffed9f;--cw:#a9d18e;--proj:#d7c2f0;--oth:#cfd4dc;--tint:#17202e;--ok:#1b6e3a;--warn:#8a5a00;--bad:#b3261e;--ovl:rgba(16,21,31,.45);
 box-sizing:border-box}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151f;--card:#19212f;--tx:#eaeef6;--mut:#9aa6ba;--bd:#2a3446;--ac:#9db4f5;--acx:#10151f;--wyk:#3a5486;--lab:#7d6a12;--cw:#3f7440;--oth:#4b5363;--tint:#eaeef6;--ok:#7bd88f;--warn:#f0c36a;--bad:#ff9b92;--ovl:rgba(0,0,0,.6)}}
-:root[data-theme="dark"]{--bg:#10151f;--card:#19212f;--tx:#eaeef6;--mut:#9aa6ba;--bd:#2a3446;--ac:#9db4f5;--acx:#10151f;--wyk:#3a5486;--lab:#7d6a12;--cw:#3f7440;--oth:#4b5363;--tint:#eaeef6;--ok:#7bd88f;--warn:#f0c36a;--bad:#ff9b92;--ovl:rgba(0,0,0,.6)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151f;--card:#19212f;--tx:#eaeef6;--mut:#9aa6ba;--bd:#2a3446;--ac:#9db4f5;--acx:#10151f;--wyk:#3a5486;--lab:#7d6a12;--cw:#3f7440;--proj:#5c3f84;--oth:#4b5363;--tint:#eaeef6;--ok:#7bd88f;--warn:#f0c36a;--bad:#ff9b92;--ovl:rgba(0,0,0,.6)}}
+:root[data-theme="dark"]{--bg:#10151f;--card:#19212f;--tx:#eaeef6;--mut:#9aa6ba;--bd:#2a3446;--ac:#9db4f5;--acx:#10151f;--wyk:#3a5486;--lab:#7d6a12;--cw:#3f7440;--proj:#5c3f84;--oth:#4b5363;--tint:#eaeef6;--ok:#7bd88f;--warn:#f0c36a;--bad:#ff9b92;--ovl:rgba(0,0,0,.6)}
 /* Stały układ: strona się nie przewija, przewija się tylko #scroller. Dolne menu nigdy nie zmienia pozycji
    (pasek przeglądarki nie chowa się i nie pojawia przy przełączaniu zakładek). */
 html{background:var(--bg)}
@@ -661,6 +661,10 @@ body.mob-dragging .scroller{overflow:hidden !important;touch-action:none}
 .devbar-acts button:hover{border-color:var(--warn);color:var(--warn)}
 .devbar-acts button.pri{background:var(--warn);border-color:var(--warn);color:#fff}
 .devbar-acts button.pri:hover{filter:brightness(1.06);color:#fff}
+
+/* Kolor dla typu zajęć Projekt (p) */
+.p .tm,.wb.p,.drag-ghost.p,.drag-card-ghost.compact.p{background:var(--proj)}
+
 
 
 

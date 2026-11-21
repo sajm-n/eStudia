@@ -358,3 +358,22 @@ test("v2.7b: morningSummary generuje poranny skrót dnia i respektuje dni wolne"
   assert.equal(morningSummary(v.plan, fromDK("2026-11-21")), null);
 });
 
+test("v2.8.2: typ zajęć Projekt (p) w walidacji planu, wymaganiach przedmiotu i limicie nieobecności", () => {
+  const v = validatePlan({
+    ...DEFAULT_PLAN,
+    classes: [
+      ...DEFAULT_PLAN.classes,
+      { id: "p01", name: "Projekt zespołowy", type: "p", wd: 3, weeks: "all", s: "10:00", e: "11:30", room: "s. 105", person: "dr Nowak" },
+    ],
+    subjects: [
+      { id: "sp1", name: "Projekt zespołowy", desc: "", req: "", forms: { p: { req: "Oddanie aplikacji", desc: "Konsultacje w czwartki" } }, mac: "yes" },
+    ],
+  });
+  assert.equal(v.ok, true);
+  const cls = v.plan.classes.find((c) => c.id === "p01");
+  assert.ok(cls);
+  assert.equal(cls.type, "p");
+  assert.equal(absenceLimit(v.plan, cls), 2);
+  assert.equal(v.plan.subjects[0].forms.p.req, "Oddanie aplikacji");
+});
+

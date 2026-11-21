@@ -9,7 +9,7 @@ export const $ = (id) => document.getElementById(id);
 export const esc = (s) =>
   String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-export const K = { w: "w", l: "l", c: "c2", x: "x" };
+export const K = { w: "w", l: "l", c: "c2", p: "p", x: "x" };
 export const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* Tryb desktopowy: komputer albo iPad poziomo (musi odpowiadać zapytaniu w CSS) */

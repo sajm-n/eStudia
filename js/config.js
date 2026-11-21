@@ -1,13 +1,14 @@
 /* ===== Stałe i konfiguracja aplikacji eStudia ===== */
 
-export const APP_VERSION = "2.8.1";
+export const APP_VERSION = "2.8.2";
 
-export const TYPES = { w: "Wykład", l: "Laboratorium", c: "Ćwiczenia", x: "Inne" };
-export const TYPE_ORDER = "wlcx";
+export const TYPES = { w: "Wykład", l: "Laboratorium", c: "Ćwiczenia", p: "Projekt", x: "Inne" };
+export const TYPE_ORDER = "wlcpx";
 export const TYPE_PAIRS = [
   ["w", "Wykład"],
   ["l", "Laboratorium"],
   ["c", "Ćwiczenia"],
+  ["p", "Projekt"],
   ["x", "Inne (bez kategorii)"],
 ];
 export const REC_PAIRS = [

@@ -501,14 +501,14 @@ export function isAbsentOn(plan, cid, date) {
   return list.some((x) => x.cid === cid && x.date === date);
 }
 
-/* Domyślny limit nieobecności: 2 dla laboratoriów i ćwiczeń; null (brak limitu) dla wykładów/innych, chyba że ustawiono własny */
+/* Domyślny limit nieobecności: 2 dla laboratoriów, ćwiczeń i projektów; null (brak limitu) dla wykładów/innych, chyba że ustawiono własny */
 export function absenceLimit(plan, cls) {
   if (!cls) return null;
   const lims = plan && plan.absLimits;
   if (lims && Object.prototype.hasOwnProperty.call(lims, cls.id)) {
     return lims[cls.id] > 0 ? lims[cls.id] : null;
   }
-  return cls.type === "l" || cls.type === "c" ? 2 : null;
+  return cls.type === "l" || cls.type === "c" || cls.type === "p" ? 2 : null;
 }
 
 export const serialize = (p) => JSON.stringify(p, null, 2) + "\n";
