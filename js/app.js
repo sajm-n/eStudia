@@ -1,7 +1,7 @@
 /* ===== Główny punkt wejścia aplikacji eStudia ===== */
 
 import { APP_VERSION, TABS, TAB_KEY, TV_KEY, HD_KEY, NOTIF_DEF, DEFAULT_PLAN } from "./config.js";
-import { day0, same, dk, fromDK, clone, uid, serialize, absenceLimit } from "./core.js";
+import { day0, same, dk, fromDK, clone, uid, serialize, absenceLimit, isExamTask } from "./core.js";
 import { cache, conflict, hooks, isDevMode, enterDevMode, loadDevPlan, exitDevMode, commit, syncAll, resolveConflict, clearTokenState } from "./sync.js";
 import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushState } from "./push.js";
 import { $, isDesk, mqD, dl, lsSet, setMsg, getTheme, applyTheme, ui, app } from "./state.js";
@@ -142,9 +142,11 @@ function shAction(a) {
       }
     }
     else if (k === "tg") {
+      const cur = cache.plan.tasks.find((x) => x.id === id);
+      if (!cur || isExamTask(cur)) return;
       change((p) => {
         const t = p.tasks.find((x) => x.id === id);
-        if (t) t.done = !t.done;
+        if (t && !isExamTask(t)) t.done = !t.done;
       });
       rerenderDetail('[data-sh="tg:' + id + '"]');
       popCb(id);
@@ -193,12 +195,6 @@ function shAction(a) {
       openArchivedTasks();
     } else if (k === "exedit") {
       openTask(id, { back: { view: "exams" } });
-    } else if (k === "exdone") {
-      change((p) => {
-        const t = p.tasks.find((x) => x.id === id);
-        if (t) t.done = true;
-      }, "Oznaczono kolokwium jako zaliczone");
-      openExams();
     } else if (k === "semsw") {
       switchSemester(id);
     } else if (k === "semdel") {
@@ -228,6 +224,9 @@ function shAction(a) {
       break;
     case "exadd":
       openNewTask({ cat: "exam", back: { view: "exams" } });
+      break;
+    case "sesadd":
+      openNewTask({ cat: "session", back: { view: "exams" } });
       break;
     case "subj": {
       const c = cache.plan.classes.find((x) => x.id === cid);

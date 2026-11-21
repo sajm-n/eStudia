@@ -3,7 +3,7 @@
    Workflow GitHub Actions (.github/workflows/notify.yml) wysyła powiadomienia na zapisane urządzenia. */
 
 import { SEEN_KEY, VAPID_PUBLIC, PUSH_FILE, PUSH_STATE_FILE, PUSH_BRANCH, PUSH_KEY, PUSHVAPID_KEY } from "./config.js";
-import { day0, same, fromDK, fmtT, taskAlert, taskTrigger, taskSubjectName, taskTitle, taskCat } from "./core.js";
+import { day0, same, fromDK, fmtT, taskAlert, taskTrigger, taskSubjectName, taskTitle, taskCat, isExamTask } from "./core.js";
 import { cfg, cache, ghFile, b64e, b64d } from "./sync.js";
 import { $, esc, dl, hm, lsSet } from "./state.js";
 
@@ -18,17 +18,27 @@ export function whenWord(t) {
   return same(d, td) ? "dziś" : same(d, tm) ? "jutro" : dl(d);
 }
 
-/* Ujednolicona treść powiadomienia dla zadania / kolokwium / sprawozdania */
+/* Ujednolicona treść powiadomienia dla zadania / kolokwium / sesji / sprawozdania */
 export function alertTexts(a) {
   const t = a.t;
   const w = whenWord(t);
   const sub = taskLabel(t);
   const cat = taskCat(t);
+  const exam = isExamTask(t);
   const hasTx = !!(typeof t.text === "string" && t.text.trim());
   const name = hasTx ? t.text.trim() : sub || taskTitle(t);
   const noteSnip = (t.note || "").trim().replace(/\s+/g, " ").slice(0, 90);
-  const prefix = cat === "exam" ? "Kolokwium" : cat === "report" ? "Sprawozdanie" : cat === "project" ? "Projekt" : "Zadanie";
+  const prefix = cat === "session" ? "Sesja" : exam ? "Kolokwium" : cat === "report" ? "Sprawozdanie" : cat === "project" ? "Projekt" : "Zadanie";
   const whenFull = w + (t.time ? " o " + fmtT(t.time) : "");
+
+  if (exam) {
+    const dayPrep = w === "dziś" ? "dziś" : w === "jutro" ? "jutro" : w;
+    return {
+      title: "Przypomnienie: " + prefix + " (" + dayPrep + ") — " + name,
+      body: [sub && hasTx ? sub : "", whenFull, noteSnip].filter(Boolean).join(" · "),
+      line: whenFull,
+    };
+  }
 
   if (a.s === "over") {
     return {
@@ -52,7 +62,7 @@ const tkKey = (t) => (t.due ? t.due + (t.time || "23:59") : "9");
 export function activeAlerts() {
   const n = new Date();
   return cache.plan.tasks
-    .map((t) => ({ t, s: taskAlert(t, n, cache.plan.notif) }))
+    .map((t) => ({ t, s: taskAlert(t, n, cache.plan.notif, cache.plan) }))
     .filter((x) => x.s)
     .sort((a, b) => (a.s === b.s ? 0 : a.s === "over" ? 1 : -1) || tkKey(a.t).localeCompare(tkKey(b.t)));
 }
@@ -64,24 +74,38 @@ export function renderAlerts() {
   box.innerHTML =
     al
       .slice(0, 3)
-      .map(
-        (a) =>
-          '<div class="al"><button type="button" class="alm" data-a="tk:' +
+      .map((a) => {
+        const exam = isExamTask(a.t);
+        const cat = taskCat(a.t);
+        const sub = taskLabel(a.t);
+        const hasTx = !!(typeof a.t.text === "string" && a.t.text.trim());
+        const title = hasTx ? a.t.text.trim() : sub || taskTitle(a.t);
+        const meta = [sub && hasTx ? sub : "", alertTexts(a).line].filter(Boolean).join(" · ");
+        const badge = exam ? (cat === "session" ? "Sesja" : "Kolokwium") : "!!!";
+        return (
+          '<div class="al' +
+          (exam ? " exam" : "") +
+          '"><button type="button" class="alm" data-a="tk:' +
           esc(a.t.id) +
-          '"><b>!!!</b>' +
-          esc(a.t.text) +
+          '"><b>' +
+          badge +
+          "</b>" +
+          esc(title) +
           "<small>" +
-          esc(taskLabel(a.t)) +
-          " · " +
-          esc(alertTexts(a).line) +
-          '</small></button><button type="button" class="ald" data-a="tg:' +
-          esc(a.t.id) +
-          '" aria-label="Oznacz jako ukończone: ' +
-          esc(a.t.text) +
-          '">Zrobione</button></div>'
-      )
+          esc(meta) +
+          "</small></button>" +
+          (exam
+            ? ""
+            : '<button type="button" class="ald" data-a="tg:' +
+              esc(a.t.id) +
+              '" aria-label="Oznacz jako ukończone: ' +
+              esc(title) +
+              '">Zrobione</button>') +
+          "</div>"
+        );
+      })
       .join("") +
-    (al.length > 3 ? '<div class="al more">…i jeszcze ' + (al.length - 3) + " pilnych zadań</div>" : "");
+    (al.length > 3 ? '<div class="al more">…i jeszcze ' + (al.length - 3) + " pilnych powiadomień</div>" : "");
   try {
     if (navigator.setAppBadge) {
       const p = al.length ? navigator.setAppBadge(al.length) : navigator.clearAppBadge();

@@ -106,25 +106,46 @@ export function taskTrigger(t, notif) {
   return { start, end };
 }
 
-export function taskAlert(t, now, notif) {
-  if (t.done) return null;
+/* Moment zakończenia kolokwium/sesji: koniec zajęć z planu (jeśli przypada w ich trakcie), w przeciwnym razie godzina lub 23:59 */
+export function examEndOf(plan, t) {
+  if (!t || !t.due) return null;
+  if (plan) {
+    const cls = classForTask(plan, t);
+    if (cls && cls.c && cls.c.e) return endOf(t.due, cls.c.e);
+  }
+  return endOf(t.due, t.time || "23:59");
+}
+
+/* Czy zadanie jest ukończone? Kolokwia i sesje kończą się automatycznie po swoim odbyciu (bez ręcznego oznaczania). */
+export function isTaskDone(t, now = new Date(), plan = null) {
+  if (!t) return false;
+  if (isExamTask(t)) {
+    const end = examEndOf(plan, t);
+    return !!end && now >= end;
+  }
+  return t.done === true;
+}
+
+export function taskAlert(t, now, notif, plan = null) {
+  if (isTaskDone(t, now, plan)) return null;
   const w = taskTrigger(t, notif);
   if (!w) return null;
   if (t.at && w.start.getTime() < t.at) return null;
   if (now < w.start) return null;
   if (now <= w.end) return "soon";
+  if (isExamTask(t)) return null; /* kolokwia i sesje nie generują alertu „po terminie” */
   return now - w.end <= OVERDUE_MS ? "over" : null;
 }
 
-export function isLate(t, now = new Date()) {
-  if (t.done || !t.due) return false;
+export function isLate(t, now = new Date(), plan = null) {
+  if (!t || isExamTask(t) || t.done || !t.due) return false;
   const end = endOf(t.due, t.time || "23:59");
   return !!end && end < now;
 }
 
 /* Grupowanie zadań wg ruchomego horyzontu (bez ucinania na niedzieli) */
-export function taskGroup(t, now = new Date()) {
-  if (t.done) return "done";
+export function taskGroup(t, now = new Date(), plan = null) {
+  if (isTaskDone(t, now, plan)) return "done";
   if (!t.due) return "later";
   const td = day0(now);
   const d = fromDK(t.due);
@@ -142,9 +163,9 @@ export const taskCat = (t) => (t && Object.prototype.hasOwnProperty.call(TASK_TY
 
 export function isExamTask(t) {
   const c = taskCat(t);
-  if (c === "exam") return true;
+  if (c === "exam" || c === "session") return true;
   if (c !== "task") return false;
-  return /\b(kolos\w*|kolokwi\w*|egzamin\w*)\b/i.test(String(t && t.text ? t.text : ""));
+  return /\b(kolos\w*|kolokwi\w*|egzamin\w*|sesj\w*)\b/i.test(String(t && t.text ? t.text : ""));
 }
 
 /* Nazwa przedmiotu przypisanego do zadania (przez sid lub starsze powiązanie cid) */
@@ -168,6 +189,7 @@ export function taskTitle(t) {
   if (tx) return tx;
   const c = taskCat(t);
   if (c === "exam") return "Kolokwium";
+  if (c === "session") return "Sesja";
   if (c === "report") return "Sprawozdanie";
   if (c === "project") return "Projekt";
   return "Zadanie";
@@ -306,7 +328,7 @@ export function validatePlan(raw) {
         ? x.cat
         : "";
     const text = str(x.text, 300);
-    if (!text && cat !== "exam" && cat !== "report") continue;
+    if (!text && cat !== "exam" && cat !== "session" && cat !== "report") continue;
     let due = "";
     if (x.due !== undefined && x.due !== null && x.due !== "") {
       if (!fromDK(x.due)) continue;
@@ -369,7 +391,7 @@ export function validatePlan(raw) {
         ? x.cat
         : "";
     const text = str(x.text, 300);
-    if (!text && cat !== "exam" && cat !== "report") continue;
+    if (!text && cat !== "exam" && cat !== "session" && cat !== "report") continue;
     let id = okId(x.id) ? x.id : uid();
     while (atids.has(id)) id = uid();
     atids.add(id);
@@ -681,13 +703,13 @@ export function taskMatchesClass(plan, t, item) {
 }
 
 /* Wszystkie zadania przypadające w czasie trwania danej pozycji zajęć (item = element z itemsFor) */
-export function tasksForClass(plan, item) {
+export function tasksForClass(plan, item, now = new Date()) {
   if (!plan || !Array.isArray(plan.tasks) || !item) return [];
   return plan.tasks
     .filter((t) => taskMatchesClass(plan, t, item))
     .sort(
       (a, b) =>
-        a.done - b.done ||
+        isTaskDone(a, now, plan) - isTaskDone(b, now, plan) ||
         (a.due ? a.due + (a.time || "23:59") : "9").localeCompare(b.due ? b.due + (b.time || "23:59") : "9")
     );
 }
@@ -707,7 +729,7 @@ export function morningSummary(plan, dateObj = new Date()) {
   const d = day0(dateObj);
   const dKey = dk(d);
   const cls = itemsFor(plan, d).filter((x) => !x.off);
-  const dueToday = (plan.tasks || []).filter((t) => !t.done && t.due === dKey);
+  const dueToday = (plan.tasks || []).filter((t) => !isTaskDone(t, dateObj, plan) && t.due === dKey);
   if (!cls.length && !dueToday.length) return null;
 
   const parts = [];
@@ -716,8 +738,10 @@ export function morningSummary(plan, dateObj = new Date()) {
     const wCls = cls.length === 1 ? "1 zajęcia" : cls.length + " zajęć";
     parts.push(wCls + " (start " + fmtT(first.s) + (first.room ? ", " + first.room : "") + ")");
   }
-  const exams = dueToday.filter(isExamTask).length;
-  const other = dueToday.length - exams;
+  const sessions = dueToday.filter((t) => taskCat(t) === "session").length;
+  const exams = dueToday.filter((t) => isExamTask(t) && taskCat(t) !== "session").length;
+  const other = dueToday.length - sessions - exams;
+  if (sessions) parts.push(sessions === 1 ? "1 sesja" : sessions >= 2 && sessions <= 4 ? sessions + " sesje" : sessions + " sesji");
   if (exams) parts.push(exams === 1 ? "1 kolokwium" : exams + " kolokwia");
   if (other) parts.push(other === 1 ? "1 zadanie" : other >= 2 && other <= 4 ? other + " zadania" : other + " zadań");
 

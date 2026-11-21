@@ -1,7 +1,7 @@
 /* ===== Ustawienia, domyślne powiadomienia, kopia zapasowa, status synchronizacji i konflikty ===== */
 
 import { APP_VERSION, WD_IN } from "../config.js";
-import { pad, day0, wd, dk, fromDK, normT, fmtT, mondayOf, validatePlan, ruleStart, uid, clone } from "../core.js";
+import { pad, day0, wd, dk, fromDK, normT, fmtT, mondayOf, validatePlan, ruleStart, uid, clone, isTaskDone } from "../core.js";
 import { cfg, cache, sync, conflict, isDevMode, saveCfg, resetSyncTarget, commit, syncAll, testToken } from "../sync.js";
 import { ensurePush, renderNotifState, renderPushDiag } from "../push.js";
 import { $, esc, dl, hm, selOpts, setMsg, getTheme, ui } from "../state.js";
@@ -231,7 +231,7 @@ export function openSettings() {
       '<p id="semMsg" class="msg" role="status"></p>' +
       '<div class="acts"><button type="submit" class="btn">Zapisz nazwę</button><button type="button" class="btn" data-sh="newsem">Zakończ semestr i zacznij nowy</button></div></form>' +
       (() => {
-        const doneN = p.tasks.filter((t) => t.done).length;
+        const doneN = p.tasks.filter((t) => isTaskDone(t, ui.now, p)).length;
         const archN = Array.isArray(p.archivedTasks) ? p.archivedTasks.length : 0;
         const sems = Array.isArray(p.semesters) ? p.semesters : [];
         const semRows = sems.length
@@ -418,7 +418,7 @@ export function openConflict() {
 
 /* ----- Archiwizacja ukończonych zadań i zarządzanie semestrami ----- */
 export function archiveDoneTasks() {
-  const done = cache.plan.tasks.filter((t) => t.done);
+  const done = cache.plan.tasks.filter((t) => isTaskDone(t, ui.now, cache.plan));
   if (!done.length) {
     toast("Brak ukończonych zadań do zarchiwizowania");
     return;
@@ -427,8 +427,9 @@ export function archiveDoneTasks() {
     const keep = [];
     const moved = [];
     for (const t of p.tasks) {
-      if (t.done) {
+      if (isTaskDone(t, ui.now, p)) {
         const copy = clone(t);
+        copy.done = true;
         copy.label = taskLabelOf(t);
         moved.push(copy);
       } else keep.push(t);

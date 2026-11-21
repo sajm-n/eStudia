@@ -4,7 +4,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { validatePlan, taskAlert, taskTrigger, taskSubjectName, taskTitle, taskCat, morningSummary, fromDK, dk, fmtT, day0, same } from "../js/core.js";
+import { validatePlan, taskAlert, taskTrigger, taskSubjectName, taskTitle, taskCat, isExamTask, isTaskDone, morningSummary, fromDK, dk, fmtT, day0, same } from "../js/core.js";
 import { VAPID_PUBLIC } from "../js/config.js";
 import { sendPush, resolveVapidPrivate } from "./webpush.mjs";
 
@@ -51,16 +51,23 @@ const dl = (d) => d.toLocaleDateString("pl-PL", { day: "numeric", month: "long" 
 function buildTexts(plan, t) {
   const sub = taskSubjectName(plan, t);
   const cat = taskCat(t);
+  const exam = isExamTask(t);
   const hasTx = !!(typeof t.text === "string" && t.text.trim());
   const name = hasTx ? t.text.trim() : sub || taskTitle(t);
   const noteSnip = (t.note || "").trim().replace(/\s+/g, " ").slice(0, 90);
-  const prefix = cat === "exam" ? "Kolokwium" : cat === "report" ? "Sprawozdanie" : cat === "project" ? "Projekt" : "Zadanie";
+  const prefix = cat === "session" ? "Sesja" : exam ? "Kolokwium" : cat === "report" ? "Sprawozdanie" : cat === "project" ? "Projekt" : "Zadanie";
   const d = fromDK(t.due);
   const td = day0(now);
   const tm = new Date(td.getFullYear(), td.getMonth(), td.getDate() + 1);
   const w = same(d, td) ? "dziś" : same(d, tm) ? "jutro" : dl(d);
-  const dayPrep = w === "dziś" ? "na dziś" : w === "jutro" ? "na jutro" : "na " + w;
   const whenFull = w + (t.time ? " o " + fmtT(t.time) : "");
+  if (exam) {
+    return {
+      title: "Przypomnienie: " + prefix + " (" + w + ") — " + name,
+      body: [sub && hasTx ? sub : "", whenFull, noteSnip].filter(Boolean).join(" · "),
+    };
+  }
+  const dayPrep = w === "dziś" ? "na dziś" : w === "jutro" ? "na jutro" : "na " + w;
   return {
     title: "!!! " + (cat === "task" ? "Niewykonane zadanie " : prefix + " ") + dayPrep + ": " + name + " !!!",
     body: [sub && hasTx ? sub : "", "termin: " + whenFull, noteSnip].filter(Boolean).join(" · "),
@@ -132,7 +139,7 @@ if (CHECK_NEXT) {
   let dueNow = 0;
   let nextAt = Infinity;
   for (const t of plan.tasks) {
-    if (t.done) continue;
+    if (isTaskDone(t, now, plan)) continue;
     const w = taskTrigger(t, plan.notif);
     if (!w) continue;
     if (t.at && w.start.getTime() < t.at) continue;
@@ -167,7 +174,7 @@ if (!TEST && !DRY && !(Date.parse(state.hb) > now.getTime() - 30 * 60 * 1000)) {
 const jobs = TEST
   ? [{ id: "test", minTs: 0, payload: { title: "eStudia", body: "To jest testowe powiadomienie push — działa przy zamkniętej aplikacji.", tag: "test", url: "./" } }]
   : plan.tasks
-      .filter((t) => taskAlert(t, now, plan.notif) === "soon" && subs.some((s) => !delivered(t, s)))
+      .filter((t) => taskAlert(t, now, plan.notif, plan) === "soon" && subs.some((s) => !delivered(t, s)))
       .map((t) => ({
         id: t.id,
         minTs: startOf(t),

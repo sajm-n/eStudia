@@ -1,6 +1,6 @@
 /* ===== Zmiany jednorazowe zajęć, przenoszenie/zamiana całych dni i wybór akcji w trybie edycji ===== */
 
-import { wd, dk, fromDK, normT, mn, fmtT, uid, itemsFor, tasksForClass } from "../core.js";
+import { wd, dk, fromDK, normT, mn, fmtT, uid, itemsFor, tasksForClass, isTaskDone } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, items, dl, dlong, t5, ui, app } from "../state.js";
 import { openSheet, closeSheet, change } from "./sheet.js";
@@ -13,7 +13,7 @@ export function openOverride(cid, date) {
   const origDate = it.origDate || date;
   ui.ctx = { cid, date, origDate };
   const c = it.c;
-  const relatedTasks = tasksForClass(cache.plan, it).filter((t) => !t.done);
+  const relatedTasks = tasksForClass(cache.plan, it, ui.now).filter((t) => !isTaskDone(t, ui.now, cache.plan));
   const relatedIds = new Set(relatedTasks.map((t) => t.id));
   openSheet(
     "Zmiana jednorazowa",
@@ -84,7 +84,7 @@ export function openOverride(cid, date) {
       if (any) p.exceptions.push(ex);
       if (moveTasks && relatedIds.size) {
         for (const t of p.tasks) {
-          if (relatedIds.has(t.id) && !t.done) {
+          if (relatedIds.has(t.id) && !isTaskDone(t, ui.now, p)) {
             t.due = toDate;
             t.time = s;
             if (t.date) t.date = toDate;
@@ -166,8 +166,8 @@ export function openDayMove(defaultFromDate) {
       if (!dObj) return out;
       for (const it of itemsFor(cache.plan, dObj)) {
         if (it.off) continue;
-        for (const t of tasksForClass(cache.plan, it)) {
-          if (!t.done) out.add(t.id);
+        for (const t of tasksForClass(cache.plan, it, ui.now)) {
+          if (!isTaskDone(t, ui.now, cache.plan)) out.add(t.id);
         }
       }
       return out;
@@ -223,8 +223,8 @@ export function openDayMove(defaultFromDate) {
       if (!dObj) return out;
       for (const it of itemsFor(cache.plan, dObj)) {
         if (it.off) continue;
-        for (const t of tasksForClass(cache.plan, it)) {
-          if (!t.done) out.add(t.id);
+        for (const t of tasksForClass(cache.plan, it, ui.now)) {
+          if (!isTaskDone(t, ui.now, cache.plan)) out.add(t.id);
         }
       }
       return out;
@@ -256,7 +256,7 @@ export function openDayMove(defaultFromDate) {
 
       if (moveTasks && (moveA.size || moveB.size)) {
         for (const t of p.tasks) {
-          if (t.done) continue;
+          if (isTaskDone(t, ui.now, p)) continue;
           if (moveA.has(t.id)) {
             t.due = b;
             if (t.date) t.date = b;

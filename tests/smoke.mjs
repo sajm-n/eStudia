@@ -114,6 +114,8 @@ try {
     document.getElementById("exBtn").click();
     await new Promise(r => setTimeout(r, 120));
     const exTitle = document.getElementById("shT").textContent;
+    const hasSesAdd = !!document.querySelector("[data-sh='sesadd']");
+    const hasExDone = !!document.querySelector("[data-sh^='exdone:']");
     document.querySelector("[data-sh=close]").click();
     await new Promise(r => setTimeout(r, 100));
 
@@ -182,7 +184,7 @@ try {
       await new Promise(r => setTimeout(r, 100));
     }
     document.getElementById("ed").click();
-    return { hasGrid, hasExBtn, exTitle, hasSubjAdd, hasMorningOpt, hasDevOn, devBarShown, devPlanLoaded, realUntouched, devExited, dayMoveOpens };
+    return { hasGrid, hasExBtn, exTitle, hasSesAdd, hasExDone, hasSubjAdd, hasMorningOpt, hasDevOn, devBarShown, devPlanLoaded, realUntouched, devExited, dayMoveOpens };
   })()`);
 
   // 2. Mobile viewport: kalendarz #cal i render planu bez błędów
@@ -198,6 +200,8 @@ try {
   if (
     !desk.hasGrid ||
     !desk.hasExBtn ||
+    !desk.hasSesAdd ||
+    desk.hasExDone ||
     desk.exTitle !== "Sesja / Kolokwia" ||
     !desk.hasSubjAdd ||
     !desk.hasMorningOpt ||

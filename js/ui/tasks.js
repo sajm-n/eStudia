@@ -15,6 +15,7 @@ import {
   taskGroup,
   taskCat,
   isExamTask,
+  isTaskDone,
   taskSubjectName,
   taskTitle,
   tasksForClass,
@@ -99,7 +100,7 @@ export function bindCatPicker(form, onChange) {
 }
 
 /* Wszystkie zadania przypadające w czasie trwania konkretnych zajęć */
-export const tasksOf = (item) => tasksForClass(cache.plan, item);
+export const tasksOf = (item) => tasksForClass(cache.plan, item, ui.now);
 
 export const tkKey = (t) => (t.due ? t.due + (t.time || "23:59") : "9");
 
@@ -110,14 +111,33 @@ export function taskMeta(t) {
     "Termin: " +
     d.toLocaleDateString("pl-PL", { weekday: "short", day: "numeric", month: "short" }) +
     (t.time ? ", " + fmtT(t.time) : "") +
-    (isLate(t) ? " · po terminie" : "") +
+    (isLate(t, ui.now, cache.plan) ? " · po terminie" : "") +
     (t.url ? " · link" : "")
+  );
+}
+
+/* Pole znacznika w wierszu zadania: checkbox dla zwykłych zadań, nieinteraktywny wskaźnik dla kolokwiów/sesji */
+export function taskCheckHtml(t, done, attr, ariaName) {
+  if (isExamTask(t)) {
+    return '<span class="tk-ic" aria-hidden="true"><i>' + (done ? "✓" : "•") + "</i></span>";
+  }
+  return (
+    '<button type="button" class="tk-cb" role="checkbox" aria-checked="' +
+    (done ? "true" : "false") +
+    '" aria-label="Ukończone: ' +
+    esc(ariaName) +
+    '" ' +
+    attr +
+    "><i>" +
+    (done ? "✓" : "") +
+    "</i></button>"
   );
 }
 
 function tkRow(t) {
   const label = taskLabelOf(t);
   const exam = isExamTask(t);
+  const done = isTaskDone(t, ui.now, cache.plan);
   const txEmpty = !(typeof t.text === "string" && t.text.trim());
   const metaParts = [];
   if (label && !txEmpty) metaParts.push(label);
@@ -126,18 +146,12 @@ function tkRow(t) {
   const ariaName = taskTitle(t) + (label ? " (" + label + ")" : "");
   return (
     '<div class="tk-row' +
-    (t.done ? " done" : "") +
-    (isLate(t) ? " late" : "") +
+    (done ? " done" : "") +
+    (isLate(t, ui.now, cache.plan) ? " late" : "") +
     (exam ? " exam" : "") +
-    '"><button type="button" class="tk-cb" role="checkbox" aria-checked="' +
-    (t.done ? "true" : "false") +
-    '" aria-label="Ukończone: ' +
-    esc(ariaName) +
-    '" data-a="tg:' +
-    esc(t.id) +
-    '"><i>' +
-    (t.done ? "✓" : "") +
-    '</i></button><button type="button" class="tk-body tkopen" data-a="to:' +
+    '">' +
+    taskCheckHtml(t, done, 'data-a="tg:' + esc(t.id) + '"', ariaName) +
+    '<button type="button" class="tk-body tkopen" data-a="to:' +
     esc(t.id) +
     '"><span class="tk-tx">' +
     taskHeadingHtml(t) +
@@ -211,7 +225,7 @@ export function renderTasks() {
   $("hdBtn").setAttribute("aria-checked", ui.hideDone ? "true" : "false");
   const exBtn = $("exBtn");
   if (exBtn) {
-    const exN = cache.plan.tasks.filter((t) => !t.done && isExamTask(t)).length;
+    const exN = cache.plan.tasks.filter((t) => !isTaskDone(t, ui.now, cache.plan) && isExamTask(t)).length;
     exBtn.textContent = exN ? "Sesja / Kolokwia (" + exN + ")" : "Sesja / Kolokwia";
   }
 
@@ -227,11 +241,11 @@ export function renderTasks() {
   const all = cache.plan.tasks;
   const q = nameLc(ui.tkQuery.trim());
   const filtered = all.filter((t) => {
-    if (ui.hideDone && t.done) return false;
+    if (ui.hideDone && isTaskDone(t, ui.now, cache.plan)) return false;
     if (ui.tkSubj && nameLc(taskLabelOf(t)) !== ui.tkSubj) return false;
     if (ui.tkCat) {
       if (ui.tkCat === "exam") {
-        if (!isExamTask(t)) return false;
+        if (taskCat(t) === "session" || !isExamTask(t)) return false;
       } else if (taskCat(t) !== ui.tkCat) {
         return false;
       }
@@ -262,7 +276,7 @@ export function renderTasks() {
 
   box.innerHTML = GROUPS.map((g) => {
     const arr = filtered
-      .filter((t) => taskGroup(t, ui.now) === g[0])
+      .filter((t) => taskGroup(t, ui.now, cache.plan) === g[0])
       .sort((a, b) => (g[0] === "done" ? tkKey(b).localeCompare(tkKey(a)) : tkKey(a).localeCompare(tkKey(b))));
     return arr.length
       ? '<h2 class="hh grp' +
@@ -541,7 +555,7 @@ export function applySubject(p, val) {
 
 export function taskFieldsHtml(v) {
   const cat = v.cat || "task";
-  const hideTitle = cat === "exam";
+  const hideTitle = cat === "exam" || cat === "session";
   return (
     catPickerHtml(cat) +
     '<label class="fl" data-txwrap' +
@@ -560,10 +574,10 @@ export function taskFieldsHtml(v) {
     ) +
     '"></label>' +
     '<label class="fl" data-notewrap><span data-notelbl>' +
-    (cat === "exam" ? "Zakres materiału / opis" : "Opis / notatka (opcjonalnie)") +
+    (hideTitle ? "Zakres materiału / opis" : "Opis / notatka (opcjonalnie)") +
     '</span><textarea name="note" rows="3" maxlength="1000" placeholder="' +
     esc(
-      cat === "exam"
+      hideTitle
         ? "np. Rozdziały 1–3, całki nieoznaczone, definicje z wykładu…"
         : "Dodatkowe informacje, wymagania, zagadnienia…"
     ) +
@@ -612,7 +626,8 @@ export function bindTaskForm(form, isNew) {
   const clrTime = form.querySelector("[data-cleartime]");
 
   const syncCatUi = (cat) => {
-    if (txWrap) txWrap.hidden = cat === "exam";
+    const isExOrSes = cat === "exam" || cat === "session";
+    if (txWrap) txWrap.hidden = isExOrSes;
     if (txLbl) {
       txLbl.textContent =
         cat === "report"
@@ -630,11 +645,11 @@ export function bindTaskForm(form, isNew) {
           : "np. Zadania 1–5 str. 40";
     }
     if (noteLbl) {
-      noteLbl.textContent = cat === "exam" ? "Zakres materiału / opis" : "Opis / notatka (opcjonalnie)";
+      noteLbl.textContent = isExOrSes ? "Zakres materiału / opis" : "Opis / notatka (opcjonalnie)";
     }
     if (E.note) {
       E.note.placeholder =
-        cat === "exam"
+        isExOrSes
           ? "np. Rozdziały 1–3, całki nieoznaczone, definicje z wykładu…"
           : "Dodatkowe informacje, wymagania, zagadnienia…";
     }
@@ -744,7 +759,7 @@ export function bindTaskForm(form, isNew) {
 export function readTaskForm(f, errEl, rb) {
   const E = f.elements;
   const cat = E.cat ? E.cat.value : "task";
-  const text = cat === "exam" ? "" : E.text.value.trim();
+  const text = cat === "exam" || cat === "session" ? "" : E.text.value.trim();
   const note = E.note ? E.note.value.trim() : "";
   const due = E.due.value;
   const tv = E.time.value.trim();
@@ -754,7 +769,7 @@ export function readTaskForm(f, errEl, rb) {
     if (el) el.focus();
     return null;
   };
-  if (!text && cat !== "exam" && cat !== "report") {
+  if (!text && cat !== "exam" && cat !== "session" && cat !== "report") {
     return err(cat === "project" ? "Wpisz nazwę projektu." : "Wpisz treść zadania.", E.text);
   }
   if (!fromDK(due)) return err("Wybierz termin (datę).", E.due);
@@ -820,7 +835,7 @@ export function initOlForm() {
       if (v.rem) t.rem = v.rem;
       newId = t.id;
       p.tasks.push(t);
-    }, v.cat === "exam" ? "Dodano kolokwium" : v.cat === "report" ? "Dodano sprawozdanie" : "Dodano zadanie");
+    }, v.cat === "exam" ? "Dodano kolokwium" : v.cat === "session" ? "Dodano sesję" : v.cat === "report" ? "Dodano sprawozdanie" : "Dodano zadanie");
     if (ok) {
       olFormCtrl.reset({ text: "", note: "", url: "", due: tomorrowDK(), time: "" });
       toggleOl(false);
@@ -842,7 +857,7 @@ export function toggleOl(open) {
     const f = $("olf");
     if (!f) return;
     const cat = f.elements.cat ? f.elements.cat.value : "task";
-    const el = cat === "exam" ? f.elements.note : f.elements.text;
+    const el = cat === "exam" || cat === "session" ? f.elements.note : f.elements.text;
     if (el) el.focus({ preventScroll: true });
   };
   if (reduced() || !w.animate) {
@@ -924,7 +939,7 @@ export function openTask(id, opts = {}) {
   ui.ctx = { tid: id, view: "tkedit", back };
 
   const cat = taskCat(t);
-  const sheetTitle = cat === "exam" ? "Kolokwium" : cat === "report" ? "Sprawozdanie" : cat === "project" ? "Projekt" : "Zadanie";
+  const sheetTitle = cat === "exam" ? "Kolokwium" : cat === "session" ? "Sesja" : cat === "report" ? "Sprawozdanie" : cat === "project" ? "Projekt" : "Zadanie";
 
   const clsBanner = matchedCls
     ? '<button type="button" class="dt-subj tk-cls-jump" data-sh="tgo:' +
@@ -1009,9 +1024,11 @@ export function tkBack() {
 }
 
 export function toggleTask(id) {
+  const cur = cache.plan.tasks.find((x) => x.id === id);
+  if (!cur || isExamTask(cur)) return;
   change((p) => {
     const t = p.tasks.find((x) => x.id === id);
-    if (t) t.done = !t.done;
+    if (t && !isExamTask(t)) t.done = !t.done;
   });
   popCb(id);
 }
@@ -1020,28 +1037,25 @@ export function openAlertTask(id) {
   openTask(id);
 }
 
-/* Widok „Sesja / Kolokwia”: wszystkie nadchodzące kolokwia z odliczaniem dni, salą i pełnym zakresem materiału */
+/* Widok „Sesja / Kolokwia”: wszystkie nadchodzące kolokwia i sesje z odliczaniem dni, salą i pełnym zakresem materiału */
 export function openExams() {
   ui.ctx = { view: "exams" };
-  const td = day0(new Date());
+  const td = day0(ui.now);
   const list = cache.plan.tasks
-    .filter((t) => !t.done && isExamTask(t))
+    .filter((t) => !isTaskDone(t, ui.now, cache.plan) && isExamTask(t))
     .sort((a, b) => tkKey(a).localeCompare(tkKey(b)));
 
   const cards = list
     .map((t) => {
       const sub = taskLabelOf(t);
       const tx = (t.text || "").trim();
-      const head = tx && sub ? tx + " · " + sub : tx || sub || "Kolokwium";
+      const head = tx && sub ? tx + " · " + sub : tx || sub || taskTitle(t);
       const d = t.due ? fromDK(t.due) : null;
       const diff = d ? Math.round((d - td) / 864e5) : null;
       let cntTxt = "Bez terminu";
       let cntCls = "";
       if (diff !== null) {
-        if (diff < 0) {
-          cntTxt = "Po terminie (" + Math.abs(diff) + " d)";
-          cntCls = " late";
-        } else if (diff === 0) {
+        if (diff === 0) {
           cntTxt = "Dziś";
           cntCls = " soon";
         } else if (diff === 1) {
@@ -1050,7 +1064,7 @@ export function openExams() {
         } else if (diff === 2) {
           cntTxt = "Pojutrze";
           cntCls = " soon";
-        } else {
+        } else if (diff > 2) {
           cntTxt = "Za " + diff + " dni";
         }
       }
@@ -1071,6 +1085,7 @@ export function openExams() {
         esc(dateStr + roomStr) +
         "</span></div>" +
         '<div class="ex-title">' +
+        catChip(t) +
         esc(head) +
         "</div>" +
         (scope
@@ -1080,9 +1095,6 @@ export function openExams() {
         '<button type="button" class="btn" data-sh="exedit:' +
         esc(t.id) +
         '">Edytuj</button>' +
-        '<button type="button" class="btn" data-sh="exdone:' +
-        esc(t.id) +
-        '">Zaliczone ✓</button>' +
         "</div></div>"
       );
     })
@@ -1092,11 +1104,11 @@ export function openExams() {
     "Sesja / Kolokwia",
     '<p class="shsub">' +
       (list.length
-        ? "Nadchodzące kolokwia i egzaminy: " + list.length
-        : "Brak zaplanowanych kolokwiów i egzaminów.") +
+        ? "Nadchodzące kolokwia i sesje: " + list.length
+        : "Brak zaplanowanych kolokwiów ani sesji.") +
       "</p>" +
-      (list.length ? '<div class="ex-list">' + cards + "</div>" : '<div class="free">Czysto! Dodaj kolokwium przyciskiem poniżej.</div>') +
-      '<div class="acts"><button type="button" class="btn pri" data-sh="exadd">+ Dodaj kolokwium</button><button type="button" class="btn" data-sh="close">Zamknij</button></div>'
+      (list.length ? '<div class="ex-list">' + cards + "</div>" : '<div class="free">Czysto! Dodaj kolokwium lub sesję przyciskiem poniżej.</div>') +
+      '<div class="acts"><button type="button" class="btn pri" data-sh="exadd">+ Dodaj kolokwium</button><button type="button" class="btn pri" data-sh="sesadd">+ Dodaj sesję</button><button type="button" class="btn" data-sh="close">Zamknij</button></div>'
   );
 }
 
@@ -1105,7 +1117,7 @@ export function openNewTask(opts = {}) {
   const back = opts.back || null;
   const cat = opts.cat || "task";
   ui.ctx = { view: "tknew", back };
-  const title = cat === "exam" ? "Nowe kolokwium" : cat === "report" ? "Nowe sprawozdanie" : "Nowe zadanie";
+  const title = cat === "exam" ? "Nowe kolokwium" : cat === "session" ? "Nowa sesja" : cat === "report" ? "Nowe sprawozdanie" : "Nowe zadanie";
   openSheet(
     title,
     '<form id="tkNewF" novalidate autocomplete="off">' +
@@ -1147,7 +1159,7 @@ export function openNewTask(opts = {}) {
       if (v.cat && v.cat !== "task") t.cat = v.cat;
       if (v.rem) t.rem = v.rem;
       p.tasks.push(t);
-    }, v.cat === "exam" ? "Dodano kolokwium" : v.cat === "report" ? "Dodano sprawozdanie" : "Dodano zadanie");
+    }, v.cat === "exam" ? "Dodano kolokwium" : v.cat === "session" ? "Dodano sesję" : v.cat === "report" ? "Dodano sprawozdanie" : "Dodano zadanie");
     if (ok) tkBack();
   };
 }

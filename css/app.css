@@ -166,6 +166,9 @@ body.edit .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 152px)}
 .tk-cb{flex:none;width:48px;display:grid;place-items:center}
 .tk-cb i{width:24px;height:24px;border:2px solid var(--mut);border-radius:7px;display:grid;place-items:center;font-style:normal;font-size:16px;font-weight:800;line-height:1;color:var(--acx)}
 .tk-row.done .tk-cb i{background:var(--ok);border-color:var(--ok)}
+.tk-ic{flex:none;width:48px;display:grid;place-items:center}
+.tk-ic i{width:24px;height:24px;border:2px solid var(--exam);border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:15px;font-weight:800;line-height:1;color:var(--exam);background:color-mix(in srgb,var(--exam) 10%,transparent)}
+.tk-row.done .tk-ic i{background:var(--ok);border-color:var(--ok);color:var(--acx)}
 .tk-body{flex:1;min-width:0;padding:10px 4px 10px 0}
 .tk-tx{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-weight:600;font-size:15px}
 .tk-meta{display:block;font-size:12px;color:var(--mut);margin-top:2px}
@@ -215,8 +218,10 @@ h3.sec.grp{margin:14px 0 8px}
 #alerts{display:grid;gap:6px;margin:0 0 12px}
 #alerts[hidden]{display:none}
 .al{display:flex;align-items:stretch;border:1px solid var(--bad);border-radius:12px;background:var(--card);background:color-mix(in srgb,var(--bad) 10%,var(--card));overflow:hidden}
+.al.exam{border-color:color-mix(in srgb,var(--exam) 60%,var(--bd));background:color-mix(in srgb,var(--exam) 10%,var(--card))}
 .alm{flex:1;min-width:0;text-align:left;padding:9px 12px;color:var(--tx);font-size:14px;line-height:1.35;font-weight:600;overflow-wrap:anywhere}
 .alm b{color:var(--bad);margin-right:6px;letter-spacing:1px}
+.al.exam .alm b{color:var(--exam);letter-spacing:0}
 .alm small{display:block;color:var(--mut);font-size:12px;font-weight:400;margin-top:1px}
 .ald{flex:none;padding:0 14px;font-size:13px;font-weight:700;color:var(--bad);border-left:1px solid var(--bd)}
 .al.more{display:block;padding:7px 12px;border-style:dashed;color:var(--mut);font-size:13px}
@@ -433,7 +438,7 @@ body.go .cg button.on{animation:daypop .4s cubic-bezier(.34,1.56,.5,1)}
 :root[data-theme="dark"]{--exam:#c4b5fd;--report:#7dd3fc;--proj:#fcd34d}
 
 .tcat{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;margin-right:6px;vertical-align:1px;border:1px solid var(--bd);color:var(--mut)}
-.tcat.exam{color:var(--exam);border-color:var(--exam);background:color-mix(in srgb,var(--exam) 12%,transparent)}
+.tcat.exam,.tcat.session{color:var(--exam);border-color:var(--exam);background:color-mix(in srgb,var(--exam) 12%,transparent)}
 .tcat.report{color:var(--report);border-color:var(--report);background:color-mix(in srgb,var(--report) 12%,transparent)}
 .tcat.project{color:var(--proj);border-color:var(--proj);background:color-mix(in srgb,var(--proj) 12%,transparent)}
 .tk-row.exam{border-color:color-mix(in srgb,var(--exam) 55%,var(--bd))}

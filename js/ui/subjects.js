@@ -1,11 +1,11 @@
 /* ===== Katalog przedmiotów, wymagania, notatki i zgodność z MacBookiem ===== */
 
 import { TYPES, TYPE_ORDER, GROUPS, MAC_OPTS, MAC_TXT } from "../config.js";
-import { dk, mn, uid, isLate, taskGroup, isExamTask, taskSubjectName, taskTitle, absencesOf, absenceLimit } from "../core.js";
+import { dk, mn, uid, isLate, taskGroup, isExamTask, isTaskDone, taskSubjectName, taskTitle, absencesOf, absenceLimit } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, reduced, nameLc, ui } from "../state.js";
 import { openSheet, change } from "./sheet.js";
-import { tkKey, taskMeta, taskHeadingHtml, taskNoteHtml } from "./tasks.js";
+import { tkKey, taskMeta, taskHeadingHtml, taskNoteHtml, taskCheckHtml } from "./tasks.js";
 
 const FORM_LABEL = (t) => (t === "x" ? "Zajęcia" : t === "g" ? "Informacje" : TYPES[t]);
 
@@ -37,7 +37,7 @@ export function subjectList() {
   const gone = new Set();
   for (const c of cache.plan.classes) {
     /* minione zajęcia jednorazowe nie tworzą przedmiotu, chyba że ma on jeszcze otwarte zadania */
-    if (oneOffEnded(c) && !subjTasks(c.name).some((t) => !t.done)) {
+    if (oneOffEnded(c) && !subjTasks(c.name).some((t) => !isTaskDone(t, ui.now, cache.plan))) {
       gone.add(nameLc(c.name));
       continue;
     }
@@ -99,7 +99,7 @@ export function renderSubjects() {
     ? list
         .map((e) => {
           const rec = subjRec(e.name);
-          const open = subjTasks(e.name).filter((t) => !t.done).length;
+          const open = subjTasks(e.name).filter((t) => !isTaskDone(t, ui.now, cache.plan)).length;
           const absChips = cache.plan.classes
             .filter((c) => nameLc(c.name) === nameLc(e.name))
             .map((c) => {
@@ -211,20 +211,15 @@ export function flushSave() {
 }
 
 function sjTaskRow(t) {
+  const done = isTaskDone(t, ui.now, cache.plan);
   return (
     '<div class="tk-row' +
-    (t.done ? " done" : "") +
-    (isLate(t) ? " late" : "") +
+    (done ? " done" : "") +
+    (isLate(t, ui.now, cache.plan) ? " late" : "") +
     (isExamTask(t) ? " exam" : "") +
-    '"><button type="button" class="tk-cb" role="checkbox" aria-checked="' +
-    (t.done ? "true" : "false") +
-    '" aria-label="Ukończone: ' +
-    esc(taskTitle(t)) +
-    '" data-sh="stg:' +
-    esc(t.id) +
-    '"><i>' +
-    (t.done ? "✓" : "") +
-    '</i></button><button type="button" class="tk-body tkopen" data-sh="sto:' +
+    '">' +
+    taskCheckHtml(t, done, 'data-sh="stg:' + esc(t.id) + '"', taskTitle(t)) +
+    '<button type="button" class="tk-body tkopen" data-sh="sto:' +
     esc(t.id) +
     '"><span class="tk-tx">' +
     taskHeadingHtml(t, { omitSubj: true }) +
@@ -243,7 +238,7 @@ export function openSubject(name, tab, focus) {
   const keys = forms.length ? forms.map((f) => f.type) : ["g"];
   if (tab !== "tasks" && !keys.includes(tab)) tab = keys[0];
   const all = subjTasks(e.name);
-  const n = all.filter((t) => !t.done).length;
+  const n = all.filter((t) => !isTaskDone(t, ui.now, cache.plan)).length;
   const rec = subjRec(e.name) || { req: "", desc: "", forms: {}, mac: "" };
   const reopen = !!ui.shOpen && ui.ctx.view === "subj" && ui.ctx.sname === e.name;
   const fresh = !reopen;
@@ -287,7 +282,7 @@ export function openSubject(name, tab, focus) {
   if (tab === "tasks") {
     const groups = GROUPS.map((g) => {
       const arr = all
-        .filter((t) => taskGroup(t) === g[0])
+        .filter((t) => taskGroup(t, ui.now, cache.plan) === g[0])
         .sort((a, b) => (g[0] === "done" ? tkKey(b).localeCompare(tkKey(a)) : tkKey(a).localeCompare(tkKey(b))));
       return arr.length
         ? '<h3 class="sec grp' +

@@ -14,6 +14,8 @@ import {
   taskGroup,
   taskCat,
   isExamTask,
+  isTaskDone,
+  examEndOf,
   absencesOf,
   isAbsentOn,
   absenceLimit,
@@ -126,7 +128,7 @@ test("taskTrigger i taskAlert: reguły domyślne, relatywne i absolutne", () => 
   const t1 = {
     id: "t1",
     kind: "onsite",
-    text: "Kolos",
+    text: "Zadanie 1",
     due: "2026-11-23",
     time: "11:30",
     at: new Date(2026, 10, 20, 10, 0).getTime(),
@@ -375,5 +377,61 @@ test("v2.8.2: typ zajęć Projekt (p) w walidacji planu, wymaganiach przedmiotu 
   assert.equal(cls.type, "p");
   assert.equal(absenceLimit(v.plan, cls), 2);
   assert.equal(v.plan.subjects[0].forms.p.req, "Oddanie aplikacji");
+});
+
+test("v2.8.4: kolokwia i sesje kończą się automatycznie po odbyciu i nie generują alertu po terminie", () => {
+  const notif = { task: { m: "day", days: 1, time: "18:00" } };
+  const v = validatePlan({
+    ...DEFAULT_PLAN,
+    subjects: [{ id: "s1", name: "Podstawy programowania", desc: "", req: "", forms: {}, mac: "" }],
+    tasks: [
+      // Kolokwium na poniedziałkowym labie c01 (08:00–11:15)
+      { id: "ex1", cat: "exam", text: "", note: "Pętle i tablice", sid: "s1", due: "2026-11-23", time: "08:00", at: new Date(2026, 10, 20, 10, 0).getTime(), done: false },
+      // Sesja poza zajęciami (sobota 10:00)
+      { id: "ses1", cat: "session", text: "", note: "Egzamin końcowy", sid: "s1", due: "2026-11-28", time: "10:00", at: new Date(2026, 10, 20, 10, 0).getTime(), done: false },
+      // Sesja całodniowa (bez godziny)
+      { id: "ses2", cat: "session", text: "", note: "Termin zerowy", sid: "s1", due: "2026-11-29", time: "", at: new Date(2026, 10, 20, 10, 0).getTime(), done: false },
+    ],
+  });
+  assert.equal(v.ok, true);
+  const p = v.plan;
+  const ex1 = p.tasks.find((t) => t.id === "ex1");
+  const ses1 = p.tasks.find((t) => t.id === "ses1");
+  const ses2 = p.tasks.find((t) => t.id === "ses2");
+
+  assert.equal(isExamTask(ex1), true);
+  assert.equal(isExamTask(ses1), true);
+  assert.equal(taskCat(ses1), "session");
+  assert.equal(taskTitle(ses1), "Sesja");
+
+  // Kolokwium w trakcie zajęć c01 (08:00–11:15): koniec = 11:15
+  const exEnd = examEndOf(p, ex1);
+  assert.equal(exEnd.getHours(), 11);
+  assert.equal(exEnd.getMinutes(), 15);
+  assert.equal(isTaskDone(ex1, new Date(2026, 10, 23, 10, 0), p), false);
+  assert.equal(isTaskDone(ex1, new Date(2026, 10, 23, 11, 15), p), true);
+  assert.equal(taskGroup(ex1, new Date(2026, 10, 23, 11, 15), p), "done");
+  assert.equal(isLate(ex1, new Date(2026, 10, 23, 11, 20), p), false);
+
+  // Alert: przed kolokwium "soon", po rozpoczęciu / odbyciu brak alertu "over"
+  assert.equal(taskAlert(ex1, new Date(2026, 10, 22, 18, 0), notif, p), "soon");
+  assert.equal(taskAlert(ex1, new Date(2026, 10, 23, 8, 5), notif, p), null);
+  assert.equal(taskAlert(ex1, new Date(2026, 10, 23, 12, 0), notif, p), null);
+
+  // Sesja samodzielna z godziną 10:00: aktywna o 9:59, odbyta o 10:00
+  assert.equal(isTaskDone(ses1, new Date(2026, 10, 28, 9, 59), p), false);
+  assert.equal(isTaskDone(ses1, new Date(2026, 10, 28, 10, 0), p), true);
+  assert.equal(taskGroup(ses1, new Date(2026, 10, 28, 10, 0), p), "done");
+  assert.equal(taskAlert(ses1, new Date(2026, 10, 27, 18, 0), notif, p), "soon");
+  assert.equal(taskAlert(ses1, new Date(2026, 10, 28, 10, 5), notif, p), null);
+
+  // Sesja całodniowa (bez godziny): aktywna o 23:58, odbyta o 23:59
+  assert.equal(isTaskDone(ses2, new Date(2026, 10, 29, 23, 58), p), false);
+  assert.equal(isTaskDone(ses2, new Date(2026, 10, 29, 23, 59), p), true);
+
+  // Poranny skrót dnia rozróżnia sesję
+  const sat = morningSummary(p, new Date(2026, 10, 28, 7, 30));
+  assert.ok(sat);
+  assert.match(sat.body, /1 sesja/);
 });
 

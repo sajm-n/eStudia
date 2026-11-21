@@ -1,7 +1,7 @@
 /* ===== Widok planu zajęć: kalendarz, widok dnia, siatka tygodnia, linia postępu i edycja zajęć ===== */
 
 import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW, DOWS } from "../config.js";
-import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, taskGroup, isExamTask, taskTitle, itemsFor, tasksForClass, absencesOf, isAbsentOn, absenceLimit, dayOverrideOf, dayOverrideTarget } from "../core.js";
+import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, taskGroup, taskCat, isExamTask, isTaskDone, taskTitle, itemsFor, tasksForClass, absencesOf, isAbsentOn, absenceLimit, dayOverrideOf, dayOverrideTarget } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, K, reduced, isDesk, wk, pre, items, dl, dlong, t5, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, toast, change, playGo } from "./sheet.js";
@@ -167,7 +167,7 @@ function weekGrid(mon, td, nm) {
           const top = ((o.s - lo) / 60) * WG_H + 1;
           const h = Math.max(22, ((o.e - o.s) / 60) * WG_H - 3);
           const sh = h < 42;
-          const open = tasksOf(x).filter((t) => !t.done);
+          const open = tasksOf(x).filter((t) => !isTaskDone(t, ui.now, cache.plan));
           const hasExam = open.some(isExamTask);
           const aria =
             (ui.editMode ? "Edytuj: " : "Szczegóły i zadania: ") +
@@ -279,9 +279,12 @@ function card(it, cls, badge) {
   else if (it.movedFrom) tags.push('<span class="ev warn">Przeniesione z ' + esc(dl(fromDK(it.movedFrom))) + "</span>");
   else if (it.ex) tags.push('<span class="ev warn">Zmiana tego dnia</span>');
   if (isAbsentOn(cache.plan, it.id, it.date)) tags.push('<span class="ev warn">Nieobecność</span>');
-  const open = tasksOf(it).filter((t) => !t.done);
-  const hasExam = open.some(isExamTask);
-  if (hasExam) tags.push('<span class="ev exam"><i></i>Kolokwium</span>');
+  const open = tasksOf(it).filter((t) => !isTaskDone(t, ui.now, cache.plan));
+  const hasSession = open.some((t) => taskCat(t) === "session");
+  const hasKolos = open.some((t) => isExamTask(t) && taskCat(t) !== "session");
+  const hasExam = hasSession || hasKolos;
+  if (hasSession) tags.push('<span class="ev exam"><i></i>Sesja</span>');
+  if (hasKolos) tags.push('<span class="ev exam"><i></i>Kolokwium</span>');
   if (open.length) tags.push('<span class="ev tk"><i></i>Do zrobienia: ' + open.length + "</span>");
   const act =
     ' role="button" tabindex="0" aria-label="' +
@@ -494,17 +497,19 @@ function dayHtml(d, live) {
 /* Dni z nieukończonymi zadaniami – kropki w kalendarzu miesiąca */
 function taskDots() {
   const m = {};
-  const t0 = dk(day0(new Date()));
+  const t0 = dk(day0(ui.now));
   for (const t of cache.plan.tasks) {
-    if (t.done || !t.due) continue;
-    const o = m[t.due] || (m[t.due] = { n: 0, late: t.due < t0, exam: false });
+    if (isTaskDone(t, ui.now, cache.plan) || !t.due) continue;
+    const exam = isExamTask(t);
+    const o = m[t.due] || (m[t.due] = { n: 0, late: false, exam: false });
     o.n++;
-    if (isExamTask(t)) o.exam = true;
+    if (!exam && t.due < t0) o.late = true;
+    if (exam) o.exam = true;
   }
   return m;
 }
 
-/* Pasek podsumowania „Co przede mną” (najbliższe kolokwium, zaległe, najbliższe 7 dni) */
+/* Pasek podsumowania „Co przede mną” (najbliższe kolokwium/sesja, zaległe, najbliższe 7 dni) */
 function renderAhead() {
   const box = $("ahead");
   if (!box) return;
@@ -515,8 +520,8 @@ function renderAhead() {
   let nextExamDiff = Infinity;
 
   for (const t of cache.plan.tasks) {
-    if (t.done) continue;
-    const g = taskGroup(t, ui.now);
+    if (isTaskDone(t, ui.now, cache.plan)) continue;
+    const g = taskGroup(t, ui.now, cache.plan);
     if (g === "over") over++;
     else if (g === "today" || g === "tomorrow" || g === "afterTomorrow" || g === "week") soon7++;
     if (t.due && isExamTask(t)) {
@@ -544,8 +549,11 @@ function renderAhead() {
     const sub = taskLabelOf(nextExam.t);
     const exText = (nextExam.t.text || "").trim();
     const exMain = exText ? exText + (sub ? " (" + sub + ")" : "") : sub || (nextExam.t.note || "").split("\n")[0].slice(0, 40) || "zbliża się";
+    const exLbl = taskCat(nextExam.t) === "session" ? "Sesja:" : "Kolokwium:";
     pills.push(
-      '<button type="button" class="ah exam" data-a="exams:"><i></i><span><b>Kolokwium:</b> ' +
+      '<button type="button" class="ah exam" data-a="exams:"><i></i><span><b>' +
+        exLbl +
+        "</b> " +
         esc(exMain) +
         " · " +
         when +
@@ -878,7 +886,7 @@ function showTip(wb) {
   if (!cid || !d) return;
   const it = items(d).find((x) => x.id === cid);
   if (!it) return;
-  const open = tasksOf(it).filter((t) => !t.done);
+  const open = tasksOf(it).filter((t) => !isTaskDone(t, ui.now, cache.plan));
   if (!open.length) {
     hideTip();
     return;

@@ -1,7 +1,7 @@
 /* ===== Drag & Drop: Desktop (siatka tygodnia + resize 8-20 + zmiana tygodnia) i Mobile (long-press na górnym uchwycie + pełny kafelek + kalendarz/krawędzie) ===== */
 
 import { DOW, DOWS } from "../config.js";
-import { pad, wd, dk, fromDK, fmtT, uid, itemsFor, tasksForClass } from "../core.js";
+import { pad, wd, dk, fromDK, fmtT, uid, itemsFor, tasksForClass, isTaskDone } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, isDesk, dl, dlong, ui, app } from "../state.js";
 import { openSheet, closeSheet, change } from "./sheet.js";
@@ -44,7 +44,7 @@ function commitDrop(info) {
   const base = cache.plan.classes.find((c) => c.id === cid);
   if (!base) return;
   const srcIt = itemsFor(cache.plan, fromDK(date)).find((x) => x.id === cid) || { id: cid, date, c: base };
-  const tasks = tasksForClass(cache.plan, srcIt).filter((t) => !t.done);
+  const tasks = tasksForClass(cache.plan, srcIt, ui.now).filter((t) => !isTaskDone(t, ui.now, cache.plan));
   const taskIds = new Set(tasks.map((t) => t.id));
 
   const applyOnce = (moveTasks) => {
@@ -67,7 +67,7 @@ function commitDrop(info) {
       }
       if (moveTasks && taskIds.size) {
         for (const t of p.tasks) {
-          if (taskIds.has(t.id) && !t.done) {
+          if (taskIds.has(t.id) && !isTaskDone(t, ui.now, p)) {
             t.due = newDate;
             t.time = newS;
             if (t.date) t.date = newDate;
@@ -100,7 +100,7 @@ function commitDrop(info) {
       if (wdChanged) p.exceptions = p.exceptions.filter((x) => x.cid !== cid);
       if (moveTasks && taskIds.size) {
         for (const t of p.tasks) {
-          if (taskIds.has(t.id) && !t.done) {
+          if (taskIds.has(t.id) && !isTaskDone(t, ui.now, p)) {
             t.due = newDate;
             t.time = newS;
             if (t.date) t.date = newDate;

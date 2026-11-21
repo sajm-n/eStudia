@@ -1,11 +1,11 @@
 /* ===== Szczegóły zajęć oraz formularz dodawania/edycji zajęć ===== */
 
 import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW } from "../config.js";
-import { day0, wd, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, isExamTask, taskTitle, absencesOf, isAbsentOn, absenceLimit } from "../core.js";
+import { day0, wd, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, isExamTask, isTaskDone, taskTitle, absencesOf, isAbsentOn, absenceLimit } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, items, dlong, t5, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, change } from "./sheet.js";
-import { tasksOf, taskMeta, taskHeadingHtml, taskNoteHtml, taskFieldsHtml, bindTaskForm, subjValueForName, applySubject } from "./tasks.js";
+import { tasksOf, taskMeta, taskHeadingHtml, taskNoteHtml, taskCheckHtml, taskFieldsHtml, bindTaskForm, subjValueForName, applySubject } from "./tasks.js";
 import { macOf, macChip } from "./subjects.js";
 
 /* ----- Szczegóły zajęć i zadania w czasie ich trwania ----- */
@@ -64,21 +64,16 @@ export function openDetail(cid, date, focus) {
     '<button type="button" class="dt-subj" data-sh="subj"><span>Wymagania i notatki przedmiotu</span><b aria-hidden="true">›</b></button></div>';
 
   const rows = list
-    .map(
-      (t) =>
+    .map((t) => {
+      const done = isTaskDone(t, ui.now, cache.plan);
+      return (
         '<div class="tk-row' +
-        (t.done ? " done" : "") +
-        (isLate(t) ? " late" : "") +
+        (done ? " done" : "") +
+        (isLate(t, ui.now, cache.plan) ? " late" : "") +
         (isExamTask(t) ? " exam" : "") +
-        '"><button type="button" class="tk-cb" role="checkbox" aria-checked="' +
-        (t.done ? "true" : "false") +
-        '" aria-label="Ukończone: ' +
-        esc(taskTitle(t)) +
-        '" data-sh="tg:' +
-        esc(t.id) +
-        '"><i>' +
-        (t.done ? "✓" : "") +
-        '</i></button><button type="button" class="tk-body tkopen" aria-label="Edytuj zadanie: ' +
+        '">' +
+        taskCheckHtml(t, done, 'data-sh="tg:' + esc(t.id) + '"', taskTitle(t)) +
+        '<button type="button" class="tk-body tkopen" aria-label="Edytuj zadanie: ' +
         esc(taskTitle(t)) +
         '" data-sh="oe:' +
         esc(t.id) +
@@ -93,7 +88,8 @@ export function openDetail(cid, date, focus) {
         '" data-sh="td:' +
         esc(t.id) +
         '">×</button></div>'
-    )
+      );
+    })
     .join("");
 
   const defSubj = subjValueForName(base.name);
@@ -139,7 +135,7 @@ export function openDetail(cid, date, focus) {
       if (v.cat && v.cat !== "task") t.cat = v.cat;
       if (v.rem) t.rem = v.rem;
       p.tasks.push(t);
-    }, v.cat === "exam" ? "Dodano kolokwium" : v.cat === "report" ? "Dodano sprawozdanie" : "Dodano zadanie");
+    }, v.cat === "exam" ? "Dodano kolokwium" : v.cat === "session" ? "Dodano sesję" : v.cat === "report" ? "Dodano sprawozdanie" : "Dodano zadanie");
     if (ok) rerenderDetail('input[name="text"]');
   };
 }

@@ -1,6 +1,6 @@
 /* ===== Stałe i konfiguracja aplikacji eStudia ===== */
 
-export const APP_VERSION = "2.8.3";
+export const APP_VERSION = "2.8.4";
 
 export const TYPES = { w: "Wykład", l: "Laboratorium", c: "Ćwiczenia", p: "Projekt", x: "Inne" };
 export const TYPE_ORDER = "wlcpx";
@@ -21,12 +21,14 @@ export const REC_PAIRS = [
 export const TASK_TYPES = {
   task: "Zadanie",
   exam: "Kolokwium",
+  session: "Sesja",
   report: "Sprawozdanie",
   project: "Projekt",
 };
 export const TASK_TYPE_PAIRS = [
   ["task", "Zadanie"],
   ["exam", "Kolokwium"],
+  ["session", "Sesja"],
   ["report", "Sprawozdanie"],
   ["project", "Projekt"],
 ];
