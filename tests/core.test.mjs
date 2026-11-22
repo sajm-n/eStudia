@@ -38,6 +38,7 @@ import {
   typeTextColor,
   typeOrderIndex,
   typePairsOf,
+  mergeSchedule,
 } from "../js/core.js";
 import { DEFAULT_PLAN } from "../js/config.js";
 
@@ -506,5 +507,119 @@ test("v2.9: dynamiczne typy zajęć (plan.types) — walidacja, helpery, kontras
     false
   );
 });
+
+test("v2.9.1: mergeSchedule aktualizuje plan zajęć i przemapowuje ID bez utraty danych użytkownika", () => {
+  const current = {
+    v: 1,
+    rev: 100,
+    start: "2026-10-05",
+    startWeek: "B",
+    semester: "Semestr 3",
+    types: {
+      w: { label: "Wykład", color: "#3a5486" },
+      l: { label: "Laboratorium", color: "#7d6a12" },
+      c: { label: "Ćwiczenia", color: "#3f7440" },
+      p: { label: "Projekt", color: "#5c3f84" },
+      x: { label: "Inne", color: "#4b5363" },
+    },
+    classes: [
+      { id: "c01", name: "Matematyka I", type: "w", wd: 0, weeks: "all", s: "08:00", e: "09:30", room: "s. 101", person: "dr A" },
+      { id: "c02", name: "Programowanie", type: "l", wd: 0, weeks: "all", s: "10:00", e: "11:30", room: "s. 204", person: "mgr B" },
+      { id: "c03", name: "Usunięty kurs", type: "c", wd: 2, weeks: "A", s: "12:00", e: "13:30", room: "s. 11", person: "dr C" },
+      { id: "o01", name: "Konsultacje odróbkowe", type: "x", date: "2026-11-20", s: "15:00", e: "16:30", room: "s. 5", person: "mgr B" },
+    ],
+    exceptions: [
+      { id: "ex1", cid: "c02", date: "2026-11-09", off: true },
+      { id: "ex2", cid: "c03", date: "2026-11-11", off: true },
+    ],
+    subjects: [
+      { id: "sub1", name: "Programowanie", desc: "Notatki z labów", req: "Projekt na 5", forms: { l: { req: "Obecność", desc: "Laptop" } }, mac: "yes" },
+    ],
+    tasks: [
+      { id: "tk1", sid: "sub1", cid: "c02", text: "Oddać lab 3", due: "2026-11-16", time: "10:00", done: false },
+      { id: "tk2", sid: "", cid: "c03", text: "Zadanie z usuniętego", due: "2026-11-18", done: false },
+    ],
+    archivedTasks: [
+      { id: "at1", sid: "sub1", cid: "c02", text: "Lab 1", due: "2026-10-12", done: true, label: "Programowanie" },
+    ],
+    absences: [
+      { cid: "c02", date: "2026-10-19" },
+      { cid: "c03", date: "2026-10-21" },
+    ],
+    absLimits: { c02: 3, c03: 1 },
+    dayOverrides: [{ date: "2026-11-11", off: true, note: "Święto" }],
+    notif: { task: { m: "rel", min: 60 }, morning: { on: true, time: "07:00" } },
+    semesters: [{ id: "sem0", name: "Semestr 2", savedAt: 1700000000000, plan: DEFAULT_PLAN }],
+  };
+
+  /* Nowy plik z eStudiaTools: przesunięte ID (c01 nowe, c02=Matematyka, c03=Programowanie w nowej sali), inny start/startWeek, brak zadań i notatek */
+  const incoming = {
+    v: 1,
+    start: "2026-11-02",
+    startWeek: "A",
+    types: {
+      w: { label: "Wykład", color: "#3a5486" },
+      l: { label: "Laboratorium", color: "#995511" },
+      c: { label: "Ćwiczenia", color: "#3f7440" },
+      p: { label: "Projekt", color: "#5c3f84" },
+      x: { label: "Inne", color: "#4b5363" },
+      s: { label: "Seminarium", color: "#8a3b5e" },
+    },
+    classes: [
+      { id: "c01", name: "Seminarium", type: "s", wd: 4, weeks: "all", s: "12:00", e: "13:30", room: "s. 400", person: "prof. D" },
+      { id: "c02", name: "Matematyka I", type: "w", wd: 0, weeks: "all", s: "08:00", e: "09:30", room: "s. 101", person: "dr A" },
+      { id: "c03", name: "Programowanie", type: "l", wd: 0, weeks: "all", s: "10:00", e: "11:30", room: "s. 308", person: "mgr B" },
+    ],
+  };
+
+  const res = mergeSchedule(current, incoming);
+  assert.equal(res.ok, true, res.error || "");
+  const p = res.plan;
+
+  /* Zachowany rytm A/B, nazwa semestru, powiadomienia, nadpisania dni i archiwum semestrów */
+  assert.equal(p.start, "2026-10-05");
+  assert.equal(p.startWeek, "B");
+  assert.equal(p.semester, "Semestr 3");
+  assert.deepEqual(p.notif.task, { m: "rel", min: 60 });
+  assert.deepEqual(p.notif.morning, { on: true, time: "07:00" });
+  assert.equal(p.dayOverrides.length, 1);
+  assert.equal(p.semesters.length, 1);
+
+  /* Zaktualizowane zajęcia + zachowane ręczne zajęcia jednorazowe o01 */
+  assert.equal(p.classes.length, 4);
+  const prog = p.classes.find((c) => c.name === "Programowanie");
+  assert.equal(prog.id, "c03");
+  assert.equal(prog.room, "s. 308");
+  assert.ok(p.classes.some((c) => c.name === "Seminarium" && c.type === "s"));
+  assert.ok(p.classes.some((c) => c.name === "Konsultacje odróbkowe" && c.date === "2026-11-20"));
+
+  /* Zaktualizowane definicje typów i kolorów */
+  assert.equal(p.types.l.color, "#995511");
+  assert.equal(p.types.s.label, "Seminarium");
+
+  /* Przemapowane ID (stare c02 -> nowe c03) dla nieobecności, limitów, wyjątków i zadań */
+  assert.deepEqual(p.absences, [{ cid: "c03", date: "2026-10-19" }]);
+  assert.deepEqual(p.absLimits, { c03: 3 });
+  assert.equal(p.exceptions.length, 1);
+  assert.equal(p.exceptions[0].cid, "c03");
+  assert.equal(p.tasks.length, 2);
+  assert.equal(p.tasks.find((t) => t.id === "tk1").cid, "c03");
+  assert.equal(p.tasks.find((t) => t.id === "tk2").cid, ""); /* zadanie zachowane mimo usunięcia zajęć */
+  assert.equal(p.archivedTasks[0].cid, "c03");
+
+  /* Zachowane notatki przedmiotów */
+  assert.equal(p.subjects.length, 1);
+  assert.equal(p.subjects[0].desc, "Notatki z labów");
+  assert.equal(p.subjects[0].forms.l.req, "Obecność");
+
+  /* Statystyki zmian dla podglądu przed importem */
+  assert.equal(res.stats.updated.length, 1);
+  assert.deepEqual(res.stats.updated[0].diffs, ["room"]);
+  assert.equal(res.stats.added.length, 1);
+  assert.equal(res.stats.removed.length, 1);
+  assert.equal(res.stats.keptOneOff, 1);
+  assert.equal(res.stats.typesChanged, true);
+});
+
 
 

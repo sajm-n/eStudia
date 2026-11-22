@@ -1,6 +1,6 @@
 /* Service worker: aplikacja działa offline. Sieć ma pierwszeństwo, więc nowe wersje trafiają
    do telefonu przy najbliższym otwarciu z internetem; pamięć podręczna jest tylko zapasem. */
-const V = "plan-v34";
+const V = "plan-v35";
 const SEEN_CACHE = "estudia-push-seen";
 const SEEN_URL = "./__push_seen__";
 const SHELL = [

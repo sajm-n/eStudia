@@ -825,3 +825,219 @@ export function morningSummary(plan, dateObj = new Date()) {
   };
 }
 
+/* Aktualizacja samego planu zajęć z nowego pliku JSON (np. po zmianie sal w eStudiaTools):
+   podmienia zajęcia i definicje typów/kolorów, mapuje stare ID zajęć na nowe (1-do-1),
+   a zachowuje zadania, przedmioty/notatki, nieobecności, limity, wyjątki, rytm A/B,
+   nadpisania dni, powiadomienia oraz archiwum semestrów. */
+export function mergeSchedule(currentPlan, importedPlan) {
+  const curV = validatePlan(currentPlan);
+  if (!curV.ok) return { ok: false, error: curV.error };
+  const incV = validatePlan(importedPlan);
+  if (!incV.ok) return { ok: false, error: incV.error };
+
+  const cur = curV.plan;
+  const inc = incV.plan;
+  const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+  const oldClasses = cur.classes || [];
+  const newClasses = clone(inc.classes || []);
+  const incomingHasOneOff = newClasses.some((c) => !!c.date);
+
+  /* Dopasowanie 1-do-1 między starymi i nowymi zajęciami (zachowuje powiązania nawet po przesunięciu ID c01/c02…) */
+  const candidates = [];
+  for (let oi = 0; oi < oldClasses.length; oi++) {
+    const oc = oldClasses[oi];
+    const oName = norm(oc.name);
+    for (let ni = 0; ni < newClasses.length; ni++) {
+      const nc = newClasses[ni];
+      if (oc.type !== nc.type || oName !== norm(nc.name)) continue;
+      let score = 0;
+      if (!oc.date && !nc.date) {
+        score = 10;
+        if (oc.wd === nc.wd) score += 40;
+        if (oc.weeks === nc.weeks) score += 20;
+        if (oc.s === nc.s && oc.e === nc.e) score += 25;
+        else if (oc.s === nc.s) score += 15;
+        if (oc.person && nc.person && norm(oc.person) === norm(nc.person)) score += 10;
+        if (oc.room && nc.room && norm(oc.room) === norm(nc.room)) score += 5;
+        if (oc.id === nc.id) score += 3;
+      } else if (oc.date && nc.date && oc.date === nc.date) {
+        score = 80;
+        if (oc.s === nc.s && oc.e === nc.e) score += 20;
+        else if (oc.s === nc.s) score += 10;
+        if (oc.id === nc.id) score += 3;
+      } else {
+        continue;
+      }
+      candidates.push({ oi, ni, score });
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score || a.oi - b.oi || a.ni - b.ni);
+
+  const matchedOld = new Set();
+  const matchedNew = new Set();
+  const cidMap = new Map();
+  const updated = [];
+
+  for (const cand of candidates) {
+    if (matchedOld.has(cand.oi) || matchedNew.has(cand.ni)) continue;
+    matchedOld.add(cand.oi);
+    matchedNew.add(cand.ni);
+    const oc = oldClasses[cand.oi];
+    const nc = newClasses[cand.ni];
+    cidMap.set(oc.id, nc.id);
+
+    const diffs = [];
+    if (oc.wd !== nc.wd || oc.weeks !== nc.weeks || oc.s !== nc.s || oc.e !== nc.e) diffs.push("time");
+    if (norm(oc.room) !== norm(nc.room)) diffs.push("room");
+    if (norm(oc.person) !== norm(nc.person)) diffs.push("person");
+    if (diffs.length) updated.push({ old: clone(oc), next: clone(nc), diffs });
+  }
+
+  /* Jeśli importowany plik nie zawiera zajęć jednorazowych, zachowaj ręcznie dodane zajęcia jednorazowe z obecnego planu */
+  const usedIds = new Set(newClasses.map((c) => c.id));
+  const preservedOneOffIdx = new Set();
+  let keptOneOff = 0;
+  if (!incomingHasOneOff) {
+    for (let oi = 0; oi < oldClasses.length; oi++) {
+      if (matchedOld.has(oi)) continue;
+      const oc = oldClasses[oi];
+      if (!oc.date) continue;
+      const copy = clone(oc);
+      if (usedIds.has(copy.id)) {
+        let nextId = uid();
+        while (usedIds.has(nextId)) nextId = uid();
+        copy.id = nextId;
+      }
+      usedIds.add(copy.id);
+      cidMap.set(oc.id, copy.id);
+      newClasses.push(copy);
+      preservedOneOffIdx.add(oi);
+      keptOneOff++;
+    }
+  }
+
+  const added = [];
+  for (let ni = 0; ni < inc.classes.length; ni++) {
+    if (!matchedNew.has(ni)) added.push(clone(inc.classes[ni]));
+  }
+  const removed = [];
+  for (let oi = 0; oi < oldClasses.length; oi++) {
+    if (!matchedOld.has(oi) && !preservedOneOffIdx.has(oi)) removed.push(clone(oldClasses[oi]));
+  }
+
+  /* Definicje typów: nowe z importu + ewentualne zachowane dla istniejących form przedmiotów lub jednorazowych zajęć */
+  let mergedTypes;
+  if (inc.types) {
+    mergedTypes = clone(inc.types);
+    if (cur.types) {
+      const needed = new Set();
+      for (const c of newClasses) needed.add(c.type);
+      for (const s of cur.subjects || []) {
+        if (s.forms && typeof s.forms === "object") {
+          for (const k of Object.keys(s.forms)) needed.add(k);
+        }
+      }
+      for (const k of needed) {
+        if (!mergedTypes[k] && cur.types[k]) mergedTypes[k] = clone(cur.types[k]);
+      }
+    }
+  } else if (cur.types) {
+    mergedTypes = clone(cur.types);
+  }
+
+  /* Przedmioty: zachowaj wszystkie obecne; z importu dołącz tylko nowe, które mają realną treść */
+  const subjects = clone(cur.subjects || []);
+  const curSubjNames = new Set(subjects.map((s) => norm(s.name)));
+  const curSubjIds = new Set(subjects.map((s) => s.id));
+  for (const s of inc.subjects || []) {
+    const k = norm(s.name);
+    if (!k || curSubjNames.has(k)) continue;
+    const hasContent = !!(s.desc || s.req || s.mac || (s.forms && Object.keys(s.forms).length));
+    if (!hasContent) continue;
+    const copy = clone(s);
+    if (curSubjIds.has(copy.id)) {
+      let nextId = uid();
+      while (curSubjIds.has(nextId)) nextId = uid();
+      copy.id = nextId;
+    }
+    curSubjIds.add(copy.id);
+    curSubjNames.add(k);
+    subjects.push(copy);
+  }
+
+  const remapCid = (cid) => (cid && cidMap.has(cid) ? cidMap.get(cid) : "");
+
+  const exceptions = [];
+  for (const ex of cur.exceptions || []) {
+    const newCid = remapCid(ex.cid);
+    if (!newCid) continue;
+    exceptions.push(Object.assign(clone(ex), { cid: newCid }));
+  }
+
+  const absences = [];
+  for (const a of cur.absences || []) {
+    const newCid = remapCid(a.cid);
+    if (!newCid) continue;
+    absences.push({ cid: newCid, date: a.date });
+  }
+
+  const absLimits = {};
+  if (cur.absLimits) {
+    for (const [cid, lim] of Object.entries(cur.absLimits)) {
+      const newCid = remapCid(cid);
+      if (newCid) absLimits[newCid] = lim;
+    }
+  }
+
+  const tasks = (cur.tasks || []).map((t) => {
+    const copy = clone(t);
+    if (copy.cid) copy.cid = remapCid(copy.cid);
+    return copy;
+  });
+
+  const archivedTasks = (cur.archivedTasks || []).map((t) => {
+    const copy = clone(t);
+    if (copy.cid) copy.cid = remapCid(copy.cid);
+    return copy;
+  });
+
+  const mergedRaw = {
+    v: 1,
+    rev: cur.rev,
+    start: cur.start,
+    startWeek: cur.startWeek,
+    classes: newClasses,
+    exceptions,
+    subjects,
+    tasks,
+    notif: clone(cur.notif),
+  };
+  if (cur.semester || inc.semester) mergedRaw.semester = cur.semester || inc.semester;
+  if (mergedTypes && Object.keys(mergedTypes).length) mergedRaw.types = mergedTypes;
+  if (absences.length) mergedRaw.absences = absences;
+  if (Object.keys(absLimits).length) mergedRaw.absLimits = absLimits;
+  if (archivedTasks.length) mergedRaw.archivedTasks = archivedTasks;
+  if (cur.semesters && cur.semesters.length) mergedRaw.semesters = clone(cur.semesters);
+  if (cur.dayOverrides && cur.dayOverrides.length) mergedRaw.dayOverrides = clone(cur.dayOverrides);
+
+  const out = validatePlan(mergedRaw);
+  if (!out.ok) return out;
+
+  const typesChanged = JSON.stringify(planTypesOf(cur)) !== JSON.stringify(planTypesOf(out.plan));
+  return {
+    ok: true,
+    plan: out.plan,
+    stats: {
+      matched: matchedNew.size,
+      updated,
+      added,
+      removed,
+      keptOneOff,
+      typesChanged,
+      totalClasses: out.plan.classes.length,
+    },
+  };
+}
+
+

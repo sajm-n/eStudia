@@ -647,6 +647,17 @@ body.mob-dragging .scroller{overflow:hidden !important;touch-action:none}
 /* Kolor dla typu zajęć Projekt (p) */
 .p .tm,.wb.p,.drag-ghost.p{background:var(--prj)}
 
+/* v2.9.1: Podgląd zmian przy imporcie planu zajęć */
+.imp-diff{background:var(--card2);border:1px solid var(--bd);border-radius:11px;padding:10px 12px;margin:0 0 12px;font-size:13px;line-height:1.45}
+.imp-sum{margin:0;font-weight:700;color:var(--tx)}
+.imp-diff ul{margin:7px 0 0;padding-left:16px;list-style:none}
+.imp-diff li{margin:3px 0;color:var(--mut)}
+.imp-diff li b{color:var(--tx);font-weight:600}
+.imp-diff li.add b{color:var(--ok)}
+.imp-diff li.rem b{color:var(--dng)}
+.imp-diff li.more{font-style:italic;opacity:.85}
+
+
 
 
 

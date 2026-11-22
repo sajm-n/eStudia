@@ -1,7 +1,7 @@
 /* ===== Ustawienia, domyślne powiadomienia, kopia zapasowa, status synchronizacji i konflikty ===== */
 
-import { APP_VERSION, WD_IN } from "../config.js";
-import { pad, day0, wd, dk, fromDK, normT, fmtT, mondayOf, validatePlan, ruleStart, uid, clone, isTaskDone } from "../core.js";
+import { APP_VERSION, WD_IN, DOWS } from "../config.js";
+import { pad, day0, wd, dk, fromDK, normT, fmtT, mondayOf, validatePlan, mergeSchedule, typeLabel, ruleStart, uid, clone, isTaskDone } from "../core.js";
 import { cfg, cache, sync, conflict, isDevMode, saveCfg, resetSyncTarget, commit, syncAll, testToken } from "../sync.js";
 import { ensurePush, renderNotifState, renderPushDiag } from "../push.js";
 import { $, esc, dl, hm, selOpts, setMsg, ui } from "../state.js";
@@ -243,7 +243,8 @@ export function openSettings() {
           semRows
         );
       })() +
-      '<h3 class="sec">Kopia zapasowa</h3>' +
+      '<h3 class="sec">Kopia zapasowa i import</h3>' +
+      '<p class="hint">Import pliku JSON pozwala zaktualizować wyłącznie plan zajęć (np. nowy plik z eStudiaTools po zmianie sal — bez utraty zadań, notatek i nieobecności) albo zastąpić całą bazę z kopii zapasowej.</p>' +
       '<div class="acts"><button type="button" class="btn" data-sh="export">Eksportuj plan</button><button type="button" class="btn" data-sh="import">Importuj plan</button><button type="button" class="btn dng" data-sh="reset">Przywróć plan domyślny</button></div>' +
       '<input type="file" id="impf" accept=".json,application/json" hidden>' +
       '<p id="bkMsg" class="msg" role="status" style="margin-top:8px"></p>' +
@@ -366,19 +367,111 @@ export function openSettings() {
       setMsg("bkMsg", v.error, "bad");
       return;
     }
-    if (!(await ask("Zastąpić obecny plan planem z pliku „" + file.name + "”?", "Zastąp plan"))) return;
+    openImportDialog(file.name, v.plan);
+  };
+}
+
+function fmtImportSlot(c) {
+  const hrs = fmtT(c.s) + "–" + fmtT(c.e);
+  if (c.date) return c.date + " " + hrs;
+  const wk = c.weeks && c.weeks !== "all" ? " (" + c.weeks + ")" : "";
+  return (DOWS[c.wd] || "") + wk + " " + hrs;
+}
+
+function fmtDiffRow(item, plan) {
+  const { old, next, diffs } = item;
+  const lbl = typeLabel(plan, next.type);
+  const parts = [];
+  if (diffs.includes("time")) parts.push(fmtImportSlot(old) + " → " + fmtImportSlot(next));
+  if (diffs.includes("room")) parts.push("sala " + (old.room || "brak") + " → " + (next.room || "brak"));
+  if (diffs.includes("person")) parts.push((old.person || "brak") + " → " + (next.person || "brak"));
+  return '<li class="chg"><b>' + esc(next.name) + "</b> (" + esc(lbl) + "): " + esc(parts.join(" · ")) + "</li>";
+}
+
+function openImportDialog(fileName, importedPlan) {
+  const merged = mergeSchedule(cache.plan, importedPlan);
+  const st = merged.ok ? merged.stats : null;
+  let diffHtml = "";
+  if (st) {
+    const lines = [];
+    for (const u of st.updated) lines.push(fmtDiffRow(u, merged.plan));
+    for (const a of st.added) {
+      lines.push(
+        '<li class="add"><b>+ ' +
+          esc(a.name) +
+          "</b> (" +
+          esc(typeLabel(merged.plan, a.type)) +
+          "): " +
+          esc(fmtImportSlot(a) + (a.room ? ", " + a.room : "")) +
+          "</li>"
+      );
+    }
+    for (const r of st.removed) {
+      lines.push(
+        '<li class="rem"><b>− ' +
+          esc(r.name) +
+          "</b> (" +
+          esc(typeLabel(cache.plan, r.type)) +
+          "): " +
+          esc(fmtImportSlot(r)) +
+          "</li>"
+      );
+    }
+    const maxShow = 8;
+    const shown = lines.slice(0, maxShow);
+    if (lines.length > maxShow) {
+      shown.push('<li class="more">…i jeszcze ' + (lines.length - maxShow) + " zmian</li>");
+    }
+    const summaryParts = [];
+    if (st.updated.length) summaryParts.push(st.updated.length + " zaktualizowane");
+    if (st.added.length) summaryParts.push(st.added.length + " dodane");
+    if (st.removed.length) summaryParts.push(st.removed.length + " usunięte");
+    if (st.typesChanged) summaryParts.push("zmienione typy/kolory");
+    const summaryText = summaryParts.length
+      ? "Wykryte zmiany: " + summaryParts.join(" · ")
+      : "Plan zajęć w pliku jest identyczny z obecnym.";
+    diffHtml =
+      '<div class="imp-diff"><p class="imp-sum">' +
+      esc(summaryText) +
+      "</p>" +
+      (shown.length ? "<ul>" + shown.join("") + "</ul>" : "") +
+      "</div>";
+  }
+
+  openSheet(
+    "Import planu",
+    '<p class="shsub">Plik „' +
+      esc(fileName) +
+      "” (" +
+      importedPlan.classes.length +
+      " zajęć). Wybierz sposób wczytania:</p>" +
+      diffHtml +
+      '<p class="hint"><b>Aktualizacja samego planu</b> podmieni zajęcia oraz typy/kolory, a zachowa Twoje zadania, notatki przy przedmiotach, nieobecności, wyjątki, rytm A/B, powiadomienia i archiwum semestrów.</p>' +
+      (merged.ok
+        ? '<button type="button" class="btn pri blk" id="impMerge">Zaktualizuj tylko plan zajęć (zachowaj dane)</button>'
+        : "") +
+      '<button type="button" class="btn dng blk" id="impReplace">Zastąp cały plan (nadpisz wszystko)</button>' +
+      '<button type="button" class="btn blk" data-sh="close">Anuluj</button>'
+  );
+
+  const applyImport = (nextPlan, okMsg) => {
     const before = cache.plan;
     try {
-      commit(v.plan);
+      commit(nextPlan);
     } catch (e) {
       toast("Nie udało się zaimportować: " + e.message);
       return;
     }
     closeSheet();
-    toast("Zaimportowano plan", "Cofnij", () => {
+    toast(okMsg, "Cofnij", () => {
       try { commit(before); } catch (e) {}
     });
   };
+
+  if ($("impMerge") && merged.ok) {
+    $("impMerge").onclick = () => applyImport(merged.plan, "Zaktualizowano plan zajęć ✓");
+  }
+  $("impReplace").onclick = () => applyImport(importedPlan, "Zastąpiono cały plan ✓");
 }
 
 export function openConflict() {
@@ -515,6 +608,10 @@ export function switchSemester(id) {
     p.tasks = next.tasks || [];
     p.notif = next.notif || p.notif;
     p.semester = target.name;
+    if (next.types && Object.keys(next.types).length) p.types = next.types;
+    else delete p.types;
+    if (next.dayOverrides && next.dayOverrides.length) p.dayOverrides = next.dayOverrides;
+    else delete p.dayOverrides;
     if (next.absences && next.absences.length) p.absences = next.absences;
     else delete p.absences;
     if (next.absLimits && Object.keys(next.absLimits).length) p.absLimits = next.absLimits;
