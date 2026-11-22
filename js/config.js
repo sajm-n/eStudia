@@ -1,8 +1,9 @@
 /* ===== Stałe i konfiguracja aplikacji eStudia ===== */
 
-export const APP_VERSION = "2.8.5";
+export const APP_VERSION = "2.9";
 
 export const TYPES = { w: "Wykład", l: "Laboratorium", c: "Ćwiczenia", p: "Projekt", x: "Inne" };
+export const DEFAULT_TYPE_COLORS = { w: "#3a5486", l: "#7d6a12", c: "#3f7440", p: "#5c3f84", x: "#4b5363" };
 export const TYPE_ORDER = "wlcpx";
 export const TYPE_PAIRS = [
   ["w", "Wykład"],
@@ -61,7 +62,6 @@ export const SEEN_KEY = "estudia.notified.v1";
 export const PUSH_KEY = "estudia.pushsub.v1";
 export const PUSHVAPID_KEY = "estudia.pushvapid.v1";
 export const PUSH_ACK_KEY = "estudia.pushack.v1";
-export const THEME_KEY = "estudia.theme.v1";
 export const DEV_KEY = "estudia.dev.v1";
 export const DEV_LSK = "estudia.dev.plan.v1";
 

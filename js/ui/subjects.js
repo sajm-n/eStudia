@@ -1,13 +1,13 @@
 /* ===== Katalog przedmiotów, wymagania, notatki i zgodność z MacBookiem ===== */
 
-import { TYPES, TYPE_ORDER, GROUPS, MAC_OPTS, MAC_TXT } from "../config.js";
-import { dk, mn, uid, isLate, taskGroup, isExamTask, isTaskDone, taskSubjectName, taskTitle, absencesOf, absenceLimit } from "../core.js";
+import { GROUPS, MAC_OPTS, MAC_TXT } from "../config.js";
+import { dk, mn, uid, isLate, taskGroup, isExamTask, isTaskDone, taskSubjectName, taskTitle, absencesOf, absenceLimit, typeLabel, typeOrderIndex } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, reduced, nameLc, ui } from "../state.js";
 import { openSheet, change } from "./sheet.js";
 import { tkKey, taskMeta, taskHeadingHtml, taskNoteHtml, taskCheckHtml } from "./tasks.js";
 
-const FORM_LABEL = (t) => (t === "x" ? "Zajęcia" : t === "g" ? "Informacje" : TYPES[t]);
+const FORM_LABEL = (t) => (t === "x" ? "Zajęcia" : t === "g" ? "Informacje" : typeLabel(cache.plan, t));
 
 /* Jednorazowe zajęcia, które już się odbyły (data minęła albo dziś po godzinie zakończenia) */
 function oneOffEnded(c) {
@@ -54,7 +54,7 @@ export function subjectList() {
     if (!hidden(s.name)) get(s.name);
   }
   const a = [...map.values()];
-  a.forEach((e) => e.types.sort((x, y) => TYPE_ORDER.indexOf(x) - TYPE_ORDER.indexOf(y)));
+  a.forEach((e) => e.types.sort((x, y) => typeOrderIndex(x) - typeOrderIndex(y) || x.localeCompare(y, "pl")));
   return a.sort((x, y) => x.name.localeCompare(y.name, "pl"));
 }
 
@@ -69,7 +69,7 @@ export function subjForms(name) {
       if (c.person && !e.persons.includes(c.person)) e.persons.push(c.person);
     }
   }
-  return [...m.values()].sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type));
+  return [...m.values()].sort((a, b) => typeOrderIndex(a.type) - typeOrderIndex(b.type) || a.type.localeCompare(b.type, "pl"));
 }
 
 export const subjRec = (name) => cache.plan.subjects.find((s) => nameLc(s.name) === nameLc(name)) || null;
@@ -107,7 +107,7 @@ export function renderSubjects() {
               if (!cnt) return "";
               const lim = absenceLimit(cache.plan, c);
               const cls = lim !== null ? (cnt > lim ? " abs-bad" : cnt === lim ? " warn" : "") : "";
-              const lbl = c.type !== "x" ? TYPES[c.type].slice(0, 3) + "." : "";
+              const lbl = c.type !== "x" ? typeLabel(cache.plan, c.type).slice(0, 3) + "." : "";
               return (
                 '<span class="ev' +
                 cls +
@@ -127,7 +127,7 @@ export function renderSubjects() {
             '"><span class="nm">' +
             esc(e.name) +
             '</span><span class="mt">' +
-            e.types.map((t) => '<span class="ev">' + esc(TYPES[t]) + "</span>").join("") +
+            e.types.map((t) => '<span class="ev">' + esc(typeLabel(cache.plan, t)) + "</span>").join("") +
             macChip(rec ? rec.mac : "") +
             (hasNotes(rec) ? '<span class="ev">Notatki</span>' : "") +
             absChips +

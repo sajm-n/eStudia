@@ -1,6 +1,6 @@
 /* ===== Wspólny stan UI i drobne helpery DOM ===== */
 
-import { TABS, TAB_KEY, TV_KEY, HD_KEY, THEME_KEY } from "./config.js";
+import { TABS, TAB_KEY, TV_KEY, HD_KEY } from "./config.js";
 import { day0, weekOf, isPre, itemsFor, pad, dk } from "./core.js";
 import { cache } from "./sync.js";
 
@@ -93,29 +93,3 @@ export const app = {
   openSettings() {},
   openConflict() {},
 };
-
-/* ----- Motyw aplikacji (Systemowy / Jasny / Ciemny) ----- */
-export function getTheme() {
-  try {
-    const v = localStorage.getItem(THEME_KEY);
-    return v === "dark" || v === "light" ? v : "auto";
-  } catch (e) {
-    return "auto";
-  }
-}
-
-export function applyTheme(val) {
-  const v = val === "dark" || val === "light" ? val : "auto";
-  const root = document.documentElement;
-  if (v === "auto") {
-    delete root.dataset.theme;
-    try { localStorage.removeItem(THEME_KEY); } catch (e) {}
-  } else {
-    root.dataset.theme = v;
-    lsSet(THEME_KEY, v);
-  }
-  const dark = v === "dark" || (v === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", dark ? "#10151f" : "#1f3a8a");
-  return v;
-}

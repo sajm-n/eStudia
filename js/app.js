@@ -4,7 +4,7 @@ import { APP_VERSION, TABS, TAB_KEY, TV_KEY, HD_KEY, NOTIF_DEF, DEFAULT_PLAN } f
 import { day0, same, dk, fromDK, clone, uid, serialize, absenceLimit, isExamTask } from "./core.js";
 import { cache, conflict, hooks, isDevMode, enterDevMode, loadDevPlan, exitDevMode, commit, syncAll, resolveConflict, clearTokenState } from "./sync.js";
 import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushState } from "./push.js";
-import { $, isDesk, mqD, dl, lsSet, setMsg, getTheme, applyTheme, ui, app } from "./state.js";
+import { $, isDesk, mqD, dl, lsSet, setMsg, ui, app } from "./state.js";
 import { closeSheet, toast, ask, resolveAsk, change, playGo, popCb } from "./ui/sheet.js";
 import { renderSubjects, openSubject, ensureSubject, flushSave } from "./ui/subjects.js";
 import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, openNewTask, openExams, subjValueForName, tkBack, toggleTask, openAlertTask } from "./ui/tasks.js";
@@ -101,17 +101,7 @@ function shAction(a) {
     const k = a.slice(0, ci);
     const id = a.slice(ci + 1);
     if (k === "stab") openSubject(ui.ctx.sname, id);
-    else if (k === "theme") {
-      const v = applyTheme(id);
-      const seg = $("themeSeg");
-      if (seg) {
-        seg.querySelectorAll("button").forEach((b) => {
-          const on = b.dataset.sh === "theme:" + v;
-          b.classList.toggle("on", on);
-          b.setAttribute("aria-pressed", on);
-        });
-      }
-    } else if (k === "mac") {
+    else if (k === "mac") {
       const nm = ui.ctx.sname;
       const tb = ui.ctx.stab;
       flushSave();
@@ -693,7 +683,6 @@ if (devImpf) {
 }
 
 /* Inicjalizacja */
-applyTheme(getTheme());
 initOlForm();
 initTaskFilters();
 initDrag();

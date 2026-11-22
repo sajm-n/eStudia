@@ -32,6 +32,12 @@ import {
   dk,
   normT,
   normRule,
+  planTypesOf,
+  typeLabel,
+  typeColor,
+  typeTextColor,
+  typeOrderIndex,
+  typePairsOf,
 } from "../js/core.js";
 import { DEFAULT_PLAN } from "../js/config.js";
 
@@ -434,4 +440,71 @@ test("v2.8.4: kolokwia i sesje kończą się automatycznie po odbyciu i nie gene
   assert.ok(sat);
   assert.match(sat.body, /1 sesja/);
 });
+
+test("v2.9: dynamiczne typy zajęć (plan.types) — walidacja, helpery, kontrast i wsteczna kompatybilność", () => {
+  const customTypes = {
+    w: { label: "Wykład", color: "#3A5486" },
+    l: { label: "Laboratorium", color: "#7D6A12" },
+    c: { label: "Ćwiczenia", color: "#3F7440" },
+    p: { label: "Projekt", color: "#5C3F84" },
+    x: { label: "Inne", color: "#4B5363" },
+    s: { label: "Seminarium", color: "#8A3B5E" },
+  };
+  const v = validatePlan({
+    ...DEFAULT_PLAN,
+    types: customTypes,
+    classes: [
+      ...DEFAULT_PLAN.classes,
+      { id: "sem1", name: "Seminarium dyplomowe", type: "s", wd: 4, weeks: "all", s: "12:00", e: "13:30", room: "s. 201", person: "prof. Kowalski" },
+    ],
+    subjects: [
+      { id: "sub1", name: "Seminarium dyplomowe", desc: "", req: "", forms: { s: { req: "Prezentacja", desc: "Co tydzień" } }, mac: "" },
+    ],
+  });
+  assert.equal(v.ok, true, v.error || "");
+  const p = v.plan;
+  assert.ok(p.types);
+  assert.deepEqual(p.types.s, { label: "Seminarium", color: "#8a3b5e" });
+  assert.equal(p.classes.find((c) => c.id === "sem1").type, "s");
+  assert.equal(p.subjects[0].forms.s.req, "Prezentacja");
+
+  // Helpery na planie z własnymi typami
+  assert.equal(typeLabel(p, "s"), "Seminarium");
+  assert.equal(typeColor(p, "s"), "#8a3b5e");
+  assert.equal(typeLabel(p, "w"), "Wykład");
+  assert.equal(typeColor(p, "w"), "#3a5486");
+  assert.ok(typePairsOf(p).some(([k, lbl]) => k === "s" && lbl === "Seminarium"));
+  assert.ok(typeOrderIndex("w") < typeOrderIndex("s"));
+  assert.ok(typeOrderIndex("s") < typeOrderIndex("x"));
+
+  // Kontrast tekstu dla jasnych i ciemnych teł
+  assert.equal(typeTextColor("#ffed9f"), "#10151f");
+  assert.equal(typeTextColor("#3a5486"), "#f3f5fa");
+
+  // Wsteczna kompatybilność: plan bez pola types używa domyślnych nazw i kolorów
+  const legacy = validatePlan(DEFAULT_PLAN).plan;
+  assert.equal(legacy.types, undefined);
+  assert.equal(typeLabel(legacy, "w"), "Wykład");
+  assert.equal(typeColor(legacy, "p"), "#5c3f84");
+  assert.equal(Object.keys(planTypesOf(legacy)).length, 5);
+  assert.equal(typePairsOf(legacy).length, 5);
+
+  // Walidacja błędów: nieprawidłowy kolor hex, pusta etykieta, nieznany kod typu w zajęciach
+  assert.equal(
+    validatePlan({ ...DEFAULT_PLAN, types: { s: { label: "Seminarium", color: "red" } } }).ok,
+    false
+  );
+  assert.equal(
+    validatePlan({ ...DEFAULT_PLAN, types: { s: { label: "   ", color: "#8A3B5E" } } }).ok,
+    false
+  );
+  assert.equal(
+    validatePlan({
+      ...DEFAULT_PLAN,
+      classes: [{ id: "bad1", name: "X", type: "unknown", wd: 0, weeks: "all", s: "08:00", e: "09:30" }],
+    }).ok,
+    false
+  );
+});
+
 

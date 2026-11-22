@@ -1,7 +1,7 @@
 /* ===== Widok planu zajęć: kalendarz, widok dnia, siatka tygodnia, linia postępu i edycja zajęć ===== */
 
-import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW, DOWS } from "../config.js";
-import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, taskGroup, taskCat, isExamTask, isTaskDone, taskTitle, itemsFor, tasksForClass, absencesOf, isAbsentOn, absenceLimit, dayOverrideOf, dayOverrideTarget } from "../core.js";
+import { DOW, DOWS } from "../config.js";
+import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, taskGroup, taskCat, isExamTask, isTaskDone, taskTitle, itemsFor, tasksForClass, absencesOf, isAbsentOn, absenceLimit, dayOverrideOf, dayOverrideTarget, planTypesOf, typeLabel, typeColor, typeTextColor, typeOrderIndex } from "../core.js";
 import { cache } from "../sync.js";
 import { activeAlerts } from "../push.js";
 import { $, esc, K, reduced, isDesk, wk, pre, items, dl, dlong, t5, selOpts, ui, app } from "../state.js";
@@ -185,9 +185,11 @@ function weekGrid(mon, td, nm) {
             (openTodo.length ? ", nieukończone zadania: " + openTodo.length : "");
           const tip =
             c.name + " · " + fmtT(c.s) + "–" + fmtT(c.e) + (c.room ? " · " + c.room : "") + (c.person ? " · " + c.person : "");
+          const bgCol = typeColor(cache.plan, c.type);
+          const txCol = typeTextColor(bgCol);
           return (
             '<div class="wb ' +
-            K[c.type] +
+            (K[c.type] || "x") +
             (x.off ? " offc" : "") +
             cls +
             (sh ? " sh" : "") +
@@ -199,7 +201,15 @@ function weekGrid(mon, td, nm) {
             (o.l * 100) / o.n +
             "% + 2px);width:calc(" +
             100 / o.n +
-            '% - 4px)" role="button" tabindex="0" data-cid="' +
+            "% - 4px);background:" +
+            esc(bgCol) +
+            ";color:" +
+            esc(txCol) +
+            '" data-bg="' +
+            esc(bgCol) +
+            '" data-fg="' +
+            esc(txCol) +
+            '" role="button" tabindex="0" data-cid="' +
             esc(x.id) +
             '" data-date="' +
             esc(x.date) +
@@ -297,14 +307,20 @@ function card(it, cls, badge) {
     (openTodo.length ? ", nieukończone zadania: " + openTodo.length : "") +
     '"';
   const data = ' data-s="' + mn(c.s) + '" data-e="' + mn(c.e) + '"';
+  const bgCol = typeColor(cache.plan, c.type);
+  const txCol = typeTextColor(bgCol);
   return (
     '<div class="c ' +
-    K[c.type] +
+    (K[c.type] || "x") +
     (it.off ? " offc" : "") +
     (cls ? " " + cls : "") +
     '"' +
     data +
-    ' data-cid="' +
+    ' data-bg="' +
+    esc(bgCol) +
+    '" data-fg="' +
+    esc(txCol) +
+    '" data-cid="' +
     esc(it.id) +
     '" data-date="' +
     esc(it.date) +
@@ -316,7 +332,11 @@ function card(it, cls, badge) {
     act +
     '>' +
     (ui.editMode && !it.off ? '<div class="c-drag" aria-hidden="true" title="Przytrzymaj uchwyt, aby przesunąć"><i></i></div>' : "") +
-    '<div class="tm">' +
+    '<div class="tm" style="background:' +
+    esc(bgCol) +
+    ";color:" +
+    esc(txCol) +
+    '">' +
     (open.length ? '<i class="tkdot' + (hasExam ? " exam" : "") + '" aria-hidden="true"></i>' : "") +
     "<b>" +
     esc(fmtT(c.s)) +
@@ -325,7 +345,7 @@ function card(it, cls, badge) {
     '</span></div><div class="bd"><div class="nm">' +
     esc(c.name) +
     '</div><div class="mt">' +
-    (c.type !== "x" ? '<span class="ty">' + esc(TYPES[c.type]) + "</span>" : "") +
+    (c.type !== "x" ? '<span class="ty">' + esc(typeLabel(cache.plan, c.type)) + "</span>" : "") +
     (c.room ? "<span>" + esc(c.room) + "</span>" : "") +
     (c.person ? "<span>" + esc(c.person) + "</span>" : "") +
     tags.join("") +
@@ -761,6 +781,18 @@ export function renderPlan() {
   $("ed").textContent = ui.editMode ? "Gotowe" : "Edytuj";
   $("ed").setAttribute("aria-pressed", ui.editMode ? "true" : "false");
   $("fab").hidden = !ui.editMode;
+
+  const legEl = $("leg");
+  if (legEl) {
+    const map = planTypesOf(cache.plan);
+    const used = new Set(cache.plan.classes.map((c) => c.type));
+    const keys = Object.keys(map)
+      .filter((k) => k !== "x" && (used.has(k) || ["w", "l", "c", "p"].includes(k) || (cache.plan.types && Object.prototype.hasOwnProperty.call(cache.plan.types, k))))
+      .sort((a, b) => typeOrderIndex(a) - typeOrderIndex(b) || a.localeCompare(b, "pl"));
+    legEl.innerHTML = keys
+      .map((k) => '<span><i style="background:' + esc(map[k].color) + '"></i>' + esc(map[k].label) + "</span>")
+      .join("");
+  }
 
   const sw = cache.plan.startWeek;
   const ow = sw === "A" ? "B" : "A";

@@ -1,7 +1,7 @@
 /* ===== Szczegóły zajęć oraz formularz dodawania/edycji zajęć ===== */
 
-import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW } from "../config.js";
-import { day0, wd, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, isExamTask, isTaskDone, taskTitle, absencesOf, isAbsentOn, absenceLimit } from "../core.js";
+import { REC_PAIRS, DOW } from "../config.js";
+import { day0, wd, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, isExamTask, isTaskDone, taskTitle, absencesOf, isAbsentOn, absenceLimit, typeLabel, typePairsOf } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, items, dlong, t5, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, change } from "./sheet.js";
@@ -19,7 +19,7 @@ export function openDetail(cid, date, focus) {
   ui.ctx = { cid, date: dKey, view: "detail" };
   const list = tasksOf(it);
   const tags = [];
-  if (c.type !== "x") tags.push('<span class="ty">' + esc(TYPES[c.type]) + "</span>");
+  if (c.type !== "x") tags.push('<span class="ty">' + esc(typeLabel(cache.plan, c.type)) + "</span>");
   if (c.room) tags.push("<span>Sala: <b>" + esc(c.room) + "</b></span>");
   if (c.date) tags.push('<span class="ev">jednorazowo</span>');
   else if (c.weeks !== "all") tags.push('<span class="ev">Tydzień ' + esc(c.weeks) + "</span>");
@@ -154,7 +154,7 @@ function formHtml(v, canDelete) {
     esc(v.name) +
     '"></label>' +
     '<label class="fl">Rodzaj<select name="type">' +
-    selOpts(TYPE_PAIRS, v.type) +
+    selOpts(typePairsOf(cache.plan), v.type) +
     "</select></label>" +
     '<label class="fl">Powtarzanie<select name="rec">' +
     selOpts(REC_PAIRS, v.rec) +

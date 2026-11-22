@@ -4,7 +4,7 @@ import { APP_VERSION, WD_IN } from "../config.js";
 import { pad, day0, wd, dk, fromDK, normT, fmtT, mondayOf, validatePlan, ruleStart, uid, clone, isTaskDone } from "../core.js";
 import { cfg, cache, sync, conflict, isDevMode, saveCfg, resetSyncTarget, commit, syncAll, testToken } from "../sync.js";
 import { ensurePush, renderNotifState, renderPushDiag } from "../push.js";
-import { $, esc, dl, hm, selOpts, setMsg, getTheme, ui } from "../state.js";
+import { $, esc, dl, hm, selOpts, setMsg, ui } from "../state.js";
 import { openSheet, closeSheet, toast, ask, change } from "./sheet.js";
 import { fmtDur, taskLabelOf, catChip, taskMeta } from "./tasks.js";
 
@@ -158,32 +158,9 @@ export function dfRender() {
 export function openSettings() {
   const c = cfg;
   const p = cache.plan;
-  const curTheme = getTheme();
-  const themeBtns = [
-    ["auto", "Systemowy"],
-    ["light", "Jasny"],
-    ["dark", "Ciemny"],
-  ]
-    .map(
-      (o) =>
-        '<button type="button" data-sh="theme:' +
-        o[0] +
-        '" class="' +
-        (curTheme === o[0] ? "on" : "") +
-        '" aria-pressed="' +
-        (curTheme === o[0]) +
-        '">' +
-        o[1] +
-        "</button>"
-    )
-    .join("");
   openSheet(
     "Ustawienia",
     '<p class="shsub" id="cfgStat" role="status"></p>' +
-      '<h3 class="sec">Wygląd</h3>' +
-      '<div class="seg remseg" id="themeSeg" role="group" aria-label="Motyw aplikacji">' +
-      themeBtns +
-      "</div>" +
       '<h3 class="sec">Synchronizacja z GitHub</h3>' +
       '<p class="hint"><b>Tryb lokalny</b> (bez tokena): dane zostają tylko w pamięci tej przeglądarki, nic nie jest pobierane z serwera ani wysyłane. <b>Tryb serwerowy</b> (z tokenem): dane synchronizują się z plikiem w repozytorium na wszystkich urządzeniach. Token tworzysz na github.com (Settings → Developer settings → Fine-grained tokens) z uprawnieniem „Contents: Read and write” tylko dla tego repozytorium. Token zapisuje się wyłącznie w tej przeglądarce.</p>' +
       '<form id="cfgF" novalidate autocomplete="off">' +

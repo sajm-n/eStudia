@@ -361,6 +361,8 @@ function startMobileDrag(clientX, clientY) {
   /* Klonujemy cały kafelek zajęć, żeby przesuwał się naturalnie jak na desktopie */
   const ghost = document.createElement("div");
   ghost.className = "c " + active.typeCls + " drag-card-ghost";
+  if (active.bg) ghost.style.setProperty("--drag-bg", active.bg);
+  if (active.fg) ghost.style.setProperty("--drag-fg", active.fg);
   ghost.style.width = rect.width + "px";
   ghost.style.left = rect.left + "px";
   ghost.style.top = rect.top + "px";
@@ -573,7 +575,9 @@ export function initDrag() {
         pointerId: e.pointerId,
         cid: wb.dataset.cid,
         name: base.name,
-        typeCls: wb.classList.contains("w") ? "w" : wb.classList.contains("l") ? "l" : wb.classList.contains("c2") ? "c2" : "x",
+        typeCls: wb.classList.contains("w") ? "w" : wb.classList.contains("l") ? "l" : wb.classList.contains("c2") ? "c2" : wb.classList.contains("p") ? "p" : "x",
+        bg: wb.dataset.bg || "",
+        fg: wb.dataset.fg || "",
         date: wb.dataset.date,
         origDate: wb.dataset.orig || wb.dataset.date,
         isOnce: wb.dataset.once === "1",
@@ -615,7 +619,9 @@ export function initDrag() {
       pointerId: e.pointerId,
       cid: card.dataset.cid,
       name: base.name,
-      typeCls: card.classList.contains("w") ? "w" : card.classList.contains("l") ? "l" : card.classList.contains("c2") ? "c2" : "x",
+      typeCls: card.classList.contains("w") ? "w" : card.classList.contains("l") ? "l" : card.classList.contains("c2") ? "c2" : card.classList.contains("p") ? "p" : "x",
+      bg: card.dataset.bg || "",
+      fg: card.dataset.fg || "",
       date: card.dataset.date,
       origDate: card.dataset.orig || card.dataset.date,
       isOnce: card.dataset.once === "1",
@@ -665,6 +671,8 @@ export function initDrag() {
             active.srcEl.classList.add("drag-src");
             const g = document.createElement("div");
             g.className = "drag-ghost " + active.typeCls;
+            if (active.bg) g.style.background = active.bg;
+            if (active.fg) g.style.color = active.fg;
             g.style.width = Math.max(130, active.width) + "px";
             g.style.height = Math.max(44, Math.min(active.height, 96)) + "px";
             g.innerHTML = '<b class="dg-time"></b><span class="dg-name">' + esc(active.name) + "</span>";

@@ -2,7 +2,57 @@
    Czysty moduł ES bez zależności od DOM i localStorage — importowany zarówno przez przeglądarkę,
    jak i bezpośrednio przez scripts/notify.mjs oraz testy jednostkowe. */
 
-import { TYPES, TASK_TYPES, NOTIF_DEF, REM_MAX_MIN, OVERDUE_MS } from "./config.js";
+import { TYPES, DEFAULT_TYPE_COLORS, TYPE_ORDER, TASK_TYPES, NOTIF_DEF, REM_MAX_MIN, OVERDUE_MS } from "./config.js";
+
+export const isHexColor = (v) => typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v.trim());
+
+/* Scalony słownik typów zajęć: wbudowane TYPES + nadpisania i własne typy z plan.types */
+export function planTypesOf(plan) {
+  const out = {};
+  for (const k of Object.keys(TYPES)) {
+    out[k] = { label: TYPES[k], color: DEFAULT_TYPE_COLORS[k] || "#4b5363" };
+  }
+  const custom = plan && plan.types && typeof plan.types === "object" && !Array.isArray(plan.types) ? plan.types : null;
+  if (custom) {
+    for (const [k, v] of Object.entries(custom)) {
+      if (!v || typeof v !== "object") continue;
+      const lbl = typeof v.label === "string" ? v.label.trim().slice(0, 40) : "";
+      const col = isHexColor(v.color) ? v.color.trim().toLowerCase() : (out[k] ? out[k].color : "#4b5363");
+      if (lbl) out[k] = { label: lbl, color: col };
+    }
+  }
+  return out;
+}
+
+export function typeLabel(plan, code) {
+  const map = planTypesOf(plan);
+  return (map[code] && map[code].label) || TYPES[code] || String(code || "");
+}
+
+export function typeColor(plan, code) {
+  const map = planTypesOf(plan);
+  return (map[code] && map[code].color) || DEFAULT_TYPE_COLORS[code] || "#4b5363";
+}
+
+export function typeTextColor(hex) {
+  if (!isHexColor(hex)) return "#f3f5fa";
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 0.52 ? "#10151f" : "#f3f5fa";
+}
+
+export function typeOrderIndex(code) {
+  const i = TYPE_ORDER.indexOf(code);
+  return i >= 0 ? i : 3.5; /* własne typy pojawiają się przed "Inne" (x = 4) */
+}
+
+export function typePairsOf(plan) {
+  const map = planTypesOf(plan);
+  return Object.keys(map)
+    .sort((a, b) => typeOrderIndex(a) - typeOrderIndex(b) || a.localeCompare(b, "pl"))
+    .map((k) => [k, k === "x" && map[k].label === "Inne" ? "Inne (bez kategorii)" : map[k].label]);
+}
 
 export const pad = (n) => String(n).padStart(2, "0");
 export const day0 = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -217,6 +267,28 @@ export function validatePlan(raw) {
   }
 
   const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const okTypeCode = (v) => typeof v === "string" && /^[A-Za-z0-9_-]{1,20}$/.test(v);
+
+  /* Opcjonalny słownik typów zajęć w plan.json: { code: { label, color } } */
+  const validatedTypes = {};
+  const allowedTypes = new Set(Object.keys(TYPES));
+  if (raw.types !== undefined && raw.types !== null) {
+    if (typeof raw.types !== "object" || Array.isArray(raw.types)) {
+      return bad("Nieprawidłowy słownik typów zajęć (types).");
+    }
+    const entries = Object.entries(raw.types).slice(0, 30);
+    for (const [code, def] of entries) {
+      if (!okTypeCode(code) || !def || typeof def !== "object") {
+        return bad("Nieprawidłowy kod lub definicja typu zajęć: „" + code + "”.");
+      }
+      const label = str(def.label, 40);
+      if (!label) return bad("Typ zajęć „" + code + "” nie ma nazwy.");
+      if (!isHexColor(def.color)) return bad("Typ zajęć „" + code + "” ma nieprawidłowy kolor (wymagany #RRGGBB).");
+      validatedTypes[code] = { label, color: def.color.trim().toLowerCase() };
+      allowedTypes.add(code);
+    }
+  }
+
   const ids = new Set();
   const classes = [];
 
@@ -229,7 +301,7 @@ export function validatePlan(raw) {
     ids.add(id);
     const name = str(c.name, 120);
     if (!name) return bad("Zajęcia nr " + n + ": brak nazwy.");
-    if (!Object.prototype.hasOwnProperty.call(TYPES, c.type)) {
+    if (!allowedTypes.has(c.type)) {
       return bad("„" + name + "”: nieznany rodzaj zajęć.");
     }
     const s = normT(c.s);
@@ -296,10 +368,10 @@ export function validatePlan(raw) {
     let id = okId(x.id) ? x.id : uid();
     while (sids.has(id)) id = uid();
     sids.add(id);
-    /* forms: osobne wymagania i informacje dla wykładu / laboratorium / ćwiczeń (klucze jak w TYPES); mac: zgodność z MacBookiem */
+    /* forms: osobne wymagania i informacje dla każdej formy zajęć (klucze jak w allowedTypes); mac: zgodność z MacBookiem */
     const forms = {};
     if (x.forms && typeof x.forms === "object" && !Array.isArray(x.forms)) {
-      for (const k of Object.keys(TYPES)) {
+      for (const k of allowedTypes) {
         const f = x.forms[k];
         if (!f || typeof f !== "object") continue;
         const req = str(f.req, 3000);
@@ -483,6 +555,7 @@ export function validatePlan(raw) {
     notif,
   };
   if (semester) outPlan.semester = semester;
+  if (Object.keys(validatedTypes).length) outPlan.types = validatedTypes;
   if (absences.length) outPlan.absences = absences;
   if (Object.keys(absLimits).length) outPlan.absLimits = absLimits;
   if (archivedTasks.length) outPlan.archivedTasks = archivedTasks;
