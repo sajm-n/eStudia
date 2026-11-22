@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795377498349,
+  "rev": 1795378950453,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -46,7 +46,7 @@
       "s": "08:00",
       "e": "09:30",
       "room": "s. M402, WM",
-      "person": "mgr. M. Szabelska"
+      "person": "mgr M. Szabelska"
     },
     {
       "id": "c05",
@@ -87,8 +87,8 @@
       "type": "l",
       "wd": 1,
       "weeks": "all",
-      "s": "15:15",
-      "e": "17:30",
+      "s": "15:00",
+      "e": "17:25",
       "room": "Ox 213",
       "person": "dr inż. A. Urzędowski"
     },
@@ -159,13 +159,13 @@
       "person": "mgr inż. K. Mróz"
     },
     {
-      "id": "kmva1syj04f32j",
-      "name": "Otrzęsiny Politechniki Lubelskiej",
+      "id": "o01",
+      "name": "Przysposobienie biblioteczne",
       "type": "x",
-      "date": "2026-10-16",
-      "s": "21:00",
-      "e": "23:59",
-      "room": "Kazik",
+      "date": "2026-10-23",
+      "s": "11:30",
+      "e": "13:00",
+      "room": "s. 11, WM",
       "person": ""
     }
   ],
@@ -342,7 +342,7 @@
       "id": "kmva1tc8fdaltk",
       "text": "Napierdol sie jak dziwka",
       "sid": "",
-      "cid": "kmva1syj04f32j",
+      "cid": "",
       "date": "2026-10-16",
       "due": "2026-10-16",
       "time": "21:00",
@@ -599,6 +599,29 @@
     "morning": {
       "on": true,
       "time": "07:00"
+    }
+  },
+  "semester": "Semestr 1 (2026/27)",
+  "types": {
+    "x": {
+      "label": "Inne",
+      "color": "#4b5363"
+    },
+    "p": {
+      "label": "Projekt",
+      "color": "#923b03"
+    },
+    "l": {
+      "label": "Laboratorium",
+      "color": "#7d6a12"
+    },
+    "c": {
+      "label": "Ćwiczenia",
+      "color": "#3f7440"
+    },
+    "w": {
+      "label": "Wykład",
+      "color": "#3a5486"
     }
   },
   "absences": [
