@@ -12,7 +12,7 @@ Na szerokim ekranie (od 900 px, orientacja pozioma) aplikacja przełącza się n
 - plan to siatka godzinowa tygodnia (sobota i niedziela pojawiają się tylko, gdy mają zajęcia), ze wskaźnikiem bieżącej godziny (kropka z linią postępu dnia) oraz oznaczeniami „Teraz” / „Następne”,
 - po kliknięciu w dany przedmiot na planie widać prowadzącego, salę, rodzaj zajęć oraz szybki skrót do wymagań i notatek przedmiotu,
 - okna zajęć, zadań i ustawień wysuwają się jako panel z prawej strony,
-- skróty klawiszowe: `←`/`→` poprzedni/następny tydzień, `T` dziś, `1–3` zakładki, `N` nowe zadanie online,
+- skróty klawiszowe: `1–3` zakładki, `←`/`→` tydzień, `T` dziś, `E` edycja, `N` nowe zajęcia / zadanie, `C` kalendarz miesiąca, `/` szukaj zadań, `K` Sesja / Kolokwia, `H` ukryj ukończone, `,` ustawienia, `R` synchronizuj, `⌘Z`/`Ctrl+Z` cofnij, `?` ściągawka,
 - instalacja jako aplikacja (PWA) z ikon 192/512 px.
 
 ## Termin powiadomień

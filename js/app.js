@@ -2,10 +2,10 @@
 
 import { APP_VERSION, TABS, TAB_KEY, TV_KEY, HD_KEY, NOTIF_DEF, DEFAULT_PLAN } from "./config.js";
 import { day0, same, dk, fromDK, clone, uid, serialize, absenceLimit, isExamTask } from "./core.js";
-import { cache, conflict, hooks, isDevMode, enterDevMode, loadDevPlan, exitDevMode, commit, syncAll, resolveConflict, clearTokenState } from "./sync.js";
+import { cfg, cache, conflict, hooks, isDevMode, enterDevMode, loadDevPlan, exitDevMode, commit, syncAll, resolveConflict, clearTokenState } from "./sync.js";
 import { renderAlerts, askNotif, showNotif, enablePush, ensurePush, renderPushState } from "./push.js";
 import { $, isDesk, mqD, dl, lsSet, setMsg, ui, app } from "./state.js";
-import { closeSheet, toast, ask, resolveAsk, change, playGo, popCb } from "./ui/sheet.js";
+import { openSheet, closeSheet, toast, ask, resolveAsk, change, undoLast, playGo, popCb } from "./ui/sheet.js";
 import { renderSubjects, openSubject, ensureSubject, flushSave } from "./ui/subjects.js";
 import { renderTasks, initOlForm, initTaskFilters, toggleOl, openTask, openNewTask, openExams, subjValueForName, tkBack, toggleTask, openAlertTask } from "./ui/tasks.js";
 import {
@@ -395,6 +395,41 @@ $("shbg").addEventListener("click", (e) => {
   if (e.target === $("shbg")) closeSheet();
 });
 
+function openShortcuts() {
+  const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || "");
+  const undoKey = isMac ? "⌘Z" : "Ctrl+Z";
+  const row = (keys, desc) =>
+    '<div class="kbd-row"><span class="kbd-keys">' +
+    keys.map((k) => "<kbd>" + k + "</kbd>").join("") +
+    '</span><span class="kbd-desc">' +
+    desc +
+    "</span></div>";
+  ui.ctx = { view: "shortcuts" };
+  openSheet(
+    "Skróty klawiszowe",
+    '<p class="shsub">Dostępne na komputerze i iPadzie z klawiaturą, gdy kursor nie znajduje się w polu tekstowym.</p>' +
+      '<h3 class="sec">Globalne</h3><div class="kbd-list">' +
+      row(["1", "2", "3"], "Przełącz zakładkę (Plan, Zadania, Przedmioty)") +
+      row([","], "Otwórz Ustawienia") +
+      row(["R"], "Synchronizuj teraz z GitHubem") +
+      row([undoKey], "Cofnij ostatnią zmianę") +
+      row(["?"], "Pokaż lub zamknij tę ściągawkę") +
+      row(["Esc"], "Zamknij panel / kalendarz / anuluj przeciąganie") +
+      '</div><h3 class="sec">Plan zajęć</h3><div class="kbd-list">' +
+      row(["←", "→"], "Poprzedni / następny tydzień (także przy przeciąganiu)") +
+      row(["T"], "Przejdź do dzisiaj") +
+      row(["E"], "Włącz / wyłącz tryb edycji") +
+      row(["N"], "Dodaj nowe zajęcia") +
+      row(["C"], "Otwórz / zamknij kalendarz miesiąca") +
+      '</div><h3 class="sec">Zadania</h3><div class="kbd-list">' +
+      row(["N"], "Dodaj nowe zadanie") +
+      row(["/"], "Szukaj zadań") +
+      row(["K"], "Otwórz Sesja / Kolokwia") +
+      row(["H"], "Ukryj / pokaż ukończone zadania") +
+      '</div><div class="acts" style="margin-top:16px"><button type="button" class="btn" data-sh="close">Zamknij</button></div>'
+  );
+}
+
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && ui.shOpen) { closeSheet(); return; }
   if (e.key === "Escape" && ui.mcalOpen) { ui.mcalOpen = false; render(); return; }
@@ -421,23 +456,98 @@ document.addEventListener("keydown", (e) => {
     }
   }
   /* Skróty klawiszowe (komputer / iPad z klawiaturą) */
-  if (!isDesk() || ui.shOpen || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!isDesk()) return;
   const t = e.target;
   const tg = t && t.tagName;
-  if (tg === "INPUT" || tg === "TEXTAREA" || tg === "SELECT" || (t && t.isContentEditable)) return;
+  const inInput = tg === "INPUT" || tg === "TEXTAREA" || tg === "SELECT" || (t && t.isContentEditable);
+  if (inInput) return;
+
+  /* Zamknięcie ściągawki ponownym wciśnięciem ? */
+  if (ui.shOpen) {
+    if (ui.ctx && ui.ctx.view === "shortcuts" && e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      closeSheet();
+    }
+    return;
+  }
+
+  /* Cmd+Z / Ctrl+Z: Cofnij ostatnią zmianę */
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    undoLast();
+    return;
+  }
+
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
+  const kl = k.toLowerCase();
   if (k === "1" || k === "2" || k === "3") {
     setTab(["plan", "tasks", "subj"][+k - 1]);
+    return;
+  }
+  if (k === ",") {
+    e.preventDefault();
+    openSettings();
+    return;
+  }
+  if (k === "?") {
+    e.preventDefault();
+    openShortcuts();
+    return;
+  }
+  if (kl === "r") {
+    e.preventDefault();
+    if (isDevMode()) toast("Tryb deweloperski — synchronizacja wyłączona");
+    else if (!cfg.token) toast("Tryb lokalny — dodaj token w Ustawieniach, aby synchronizować");
+    else {
+      toast("Synchronizuję…");
+      trySync();
+    }
     return;
   }
   if (ui.tab === "plan") {
     if (k === "ArrowLeft" || k === "ArrowRight") {
       e.preventDefault();
       shiftWeek(k === "ArrowLeft" ? -1 : 1);
-    } else if (k === "t" || k === "T") goToday();
-  } else if (ui.tab === "tasks" && (k === "n" || k === "N")) {
-    e.preventDefault();
-    if (!ui.olOpen) toggleOl(true);
+    } else if (kl === "t") {
+      goToday();
+    } else if (kl === "e") {
+      e.preventDefault();
+      ui.editMode = !ui.editMode;
+      render();
+    } else if (kl === "n") {
+      e.preventDefault();
+      openForm({ mode: "new" });
+    } else if (kl === "c") {
+      e.preventDefault();
+      ui.mcalOpen = !ui.mcalOpen;
+      if (ui.mcalOpen) {
+        ui.mcalAnchor = "wk";
+        ui.mo = new Date(ui.sel.getFullYear(), ui.sel.getMonth(), 1);
+      }
+      render();
+    }
+  } else if (ui.tab === "tasks") {
+    if (kl === "n") {
+      e.preventDefault();
+      if (!ui.olOpen) toggleOl(true);
+    } else if (k === "/") {
+      e.preventDefault();
+      const s = $("tkSearch");
+      if (s) {
+        s.focus();
+        s.select();
+      }
+    } else if (kl === "k") {
+      e.preventDefault();
+      openExams();
+    } else if (kl === "h") {
+      e.preventDefault();
+      ui.hideDone = !ui.hideDone;
+      lsSet(HD_KEY, ui.hideDone ? "1" : "0");
+      render();
+      playGo();
+    }
   }
 });
 

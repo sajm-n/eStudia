@@ -310,11 +310,66 @@ try {
     const subjSingleGone = !sbNames.includes("Pojedyncze minione");
     const subjSeriesCount = sbNames.filter(n => n === "Seria jednorazowa").length;
 
+    // 1e. Skróty klawiszowe na desktopie (Ctrl+Z w dev, ?, E, C, N, ,, /, K, H)
+    document.getElementById("nv-plan").click();
+    await new Promise(r => setTimeout(r, 120));
+    if (document.body.classList.contains("edit")) document.getElementById("ed").click();
+    // Ctrl+Z powinno cofnąć ostatnią zmianę (resize e2 z 21:30 z powrotem na 20:00)
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+    await new Promise(r => setTimeout(r, 120));
+    const undoRevertedE2 = (document.querySelector("#list .wb[data-cid='e2'] .wb-top b") || {}).textContent === "19:00–20:00";
+
     document.querySelector("[data-a='devexit:']").click();
     await new Promise(r => setTimeout(r, 120));
     document.getElementById("nv-plan").click();
     await new Promise(r => setTimeout(r, 120));
-    if (document.body.classList.contains("edit")) document.getElementById("ed").click();
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+    await new Promise(r => setTimeout(r, 100));
+    const kbdHelpOpened = document.getElementById("shT").textContent === "Skróty klawiszowe";
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+    await new Promise(r => setTimeout(r, 260));
+    const kbdHelpToggledOff = document.getElementById("shbg").hidden;
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", bubbles: true }));
+    const kbdEditOn = document.body.classList.contains("edit");
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", bubbles: true }));
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true }));
+    const kbdCalOpen = !document.getElementById("mini").hidden;
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true }));
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "n", bubbles: true }));
+    await new Promise(r => setTimeout(r, 100));
+    const kbdNewClass = document.getElementById("shT").textContent === "Nowe zajęcia";
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await new Promise(r => setTimeout(r, 260));
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: ",", bubbles: true }));
+    await new Promise(r => setTimeout(r, 100));
+    const kbdSettings = document.getElementById("shT").textContent === "Ustawienia";
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await new Promise(r => setTimeout(r, 260));
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "2", bubbles: true }));
+    await new Promise(r => setTimeout(r, 100));
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "/", bubbles: true }));
+    const kbdSearchFocused = document.activeElement && document.activeElement.id === "tkSearch";
+    if (document.activeElement) document.activeElement.blur();
+
+    const hdBefore = document.getElementById("hdBtn").getAttribute("aria-checked");
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+    const kbdHideToggled = document.getElementById("hdBtn").getAttribute("aria-checked") !== hdBefore;
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", bubbles: true }));
+    await new Promise(r => setTimeout(r, 100));
+    const kbdExams = document.getElementById("shT").textContent === "Sesja / Kolokwia";
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await new Promise(r => setTimeout(r, 260));
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "1", bubbles: true }));
+    await new Promise(r => setTimeout(r, 100));
 
     return {
       hasGrid,
@@ -342,6 +397,16 @@ try {
       extClickBottomTime,
       subjSingleGone,
       subjSeriesCount,
+      undoRevertedE2,
+      kbdHelpOpened,
+      kbdHelpToggledOff,
+      kbdEditOn,
+      kbdCalOpen,
+      kbdNewClass,
+      kbdSettings,
+      kbdSearchFocused,
+      kbdHideToggled,
+      kbdExams,
     };
   })()`);
 
@@ -514,6 +579,16 @@ try {
     desk.extClickBottomTime !== "21:30–22:00" ||
     !desk.subjSingleGone ||
     desk.subjSeriesCount !== 1 ||
+    !desk.undoRevertedE2 ||
+    !desk.kbdHelpOpened ||
+    !desk.kbdHelpToggledOff ||
+    !desk.kbdEditOn ||
+    !desk.kbdCalOpen ||
+    !desk.kbdNewClass ||
+    !desk.kbdSettings ||
+    !desk.kbdSearchFocused ||
+    !desk.kbdHideToggled ||
+    !desk.kbdExams ||
     mob.calBtns < 7 ||
     !mob.mobSet.hasSemPreview ||
     !mob.mobSet.hasArchTasksBtn ||

@@ -661,6 +661,13 @@ body.mob-dragging .scroller{overflow:hidden !important;touch-action:none}
 .imp-diff li.rem b{color:var(--dng)}
 .imp-diff li.more{font-style:italic;opacity:.85}
 
+/* v3.0.0: Ściągawka ze skrótami klawiszowymi */
+.kbd-list{display:grid;gap:6px;margin:0 0 10px}
+.kbd-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 11px;border-radius:10px;background:var(--card);border:1px solid var(--bd);font-size:13.5px}
+.kbd-keys{display:inline-flex;align-items:center;gap:4px;flex:none}
+.kbd-desc{color:var(--tx);text-align:right}
+kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 6px;border-radius:6px;border:1px solid var(--bd);border-bottom-width:2px;background:var(--bg);color:var(--ac);font-family:inherit;font-size:12px;font-weight:700;line-height:1;box-sizing:border-box}
+
 
 
 

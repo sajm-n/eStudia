@@ -1,13 +1,43 @@
 /* ===== Arkusze (bottom sheet / desktop drawer), toasty, potwierdzenia, zmiana planu ===== */
 
 import { clone } from "../core.js";
-import { cache, commit } from "../sync.js";
+import { cache, commit, isDevMode } from "../sync.js";
 import { $, esc, reduced, ui, app } from "../state.js";
 
 let shTok = 0;
 let askRes = null;
 let toastT = 0;
 let goT = 0;
+const undoStack = [];
+const MAX_UNDO = 20;
+
+export function pushUndo(before) {
+  const entry = { plan: clone(before), dev: isDevMode() };
+  undoStack.push(entry);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  return entry;
+}
+
+export function undoLast() {
+  const dev = isDevMode();
+  while (undoStack.length && undoStack[undoStack.length - 1].dev !== dev) {
+    undoStack.pop();
+  }
+  const entry = undoStack.pop();
+  if (!entry) {
+    toast("Brak zmian do cofnięcia");
+    return false;
+  }
+  try {
+    commit(entry.plan);
+    app.render();
+    toast("Cofnięto ✓");
+    return true;
+  } catch (e) {
+    toast("Nie udało się cofnąć zmiany");
+    return false;
+  }
+}
 
 export function openSheet(title, html, focusSel) {
   if (ui.mcalOpen) {
@@ -129,8 +159,11 @@ export function change(fn, msg) {
     toast("Nie udało się zapisać zmiany: " + e.message);
     return false;
   }
+  const entry = pushUndo(before);
   if (msg) {
     toast(msg, "Cofnij", () => {
+      const idx = undoStack.lastIndexOf(entry);
+      if (idx >= 0) undoStack.splice(idx, 1);
       try {
         commit(before);
         app.render();
