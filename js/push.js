@@ -2,9 +2,9 @@
    Urządzenie zapisuje swoją subskrypcję push w repozytorium (push-subscriptions.json na gałęzi push-state).
    Workflow GitHub Actions (.github/workflows/notify.yml) wysyła powiadomienia na zapisane urządzenia. */
 
-import { SEEN_KEY, VAPID_PUBLIC, PUSH_FILE, PUSH_STATE_FILE, PUSH_BRANCH, PUSH_KEY, PUSHVAPID_KEY } from "./config.js";
+import { SEEN_KEY, VAPID_PUBLIC, PUSH_FILE, PUSH_STATE_FILE, PUSH_BRANCH, PUSH_KEY, PUSHVAPID_KEY, PUSH_ACK_KEY } from "./config.js";
 import { day0, same, fromDK, fmtT, taskAlert, taskTrigger, taskSubjectName, taskTitle, taskCat, isExamTask } from "./core.js";
-import { cfg, cache, ghFile, b64e, b64d } from "./sync.js";
+import { cfg, cache, isDevMode, ghFile, b64e, b64d } from "./sync.js";
 import { $, esc, dl, hm, lsSet } from "./state.js";
 
 export function taskLabel(t) {
@@ -59,8 +59,8 @@ export function alertTexts(a) {
 
 const tkKey = (t) => (t.due ? t.due + (t.time || "23:59") : "9");
 
-export function activeAlerts() {
-  const n = new Date();
+export function activeAlerts(now = new Date()) {
+  const n = now;
   return cache.plan.tasks
     .map((t) => ({ t, s: taskAlert(t, n, cache.plan.notif, cache.plan) }))
     .filter((x) => x.s)
@@ -149,16 +149,160 @@ export async function showNotif(title, body, tag) {
   }
 }
 
+const SEEN_CACHE = "estudia-push-seen";
+const SEEN_URL = "./__push_seen__";
+
+async function readSwPushSeen() {
+  try {
+    if (!("caches" in window)) return {};
+    const c = await caches.open(SEEN_CACHE);
+    const r = await c.match(SEEN_URL);
+    if (!r) return {};
+    const o = await r.json();
+    return o && typeof o === "object" ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+const loadPendingAck = () => {
+  try {
+    const o = JSON.parse(localStorage.getItem(PUSH_ACK_KEY));
+    if (o && typeof o === "object") return o;
+  } catch (e) {}
+  return {};
+};
+const savePendingAck = (o) => {
+  try {
+    if (Object.keys(o).length) localStorage.setItem(PUSH_ACK_KEY, JSON.stringify(o));
+    else localStorage.removeItem(PUSH_ACK_KEY);
+  } catch (e) {}
+};
+
+async function devicePushId(endpoint) {
+  if (!endpoint || !crypto || !crypto.subtle) return "";
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint));
+    return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+  } catch (e) {
+    return "";
+  }
+}
+
+async function currentPushEndpoint() {
+  try {
+    const saved = localStorage.getItem(PUSH_KEY) || "";
+    if (saved) return saved;
+  } catch (e) {}
+  try {
+    if (!pushSupported()) return "";
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+    return sub && sub.endpoint ? sub.endpoint : "";
+  } catch (e) {
+    return "";
+  }
+}
+
+/* Zapisuje w push-state.json (gałąź push-state), że to urządzenie już pokazało powiadomienie lokalnie,
+   dzięki czemu GitHub Actions nie wyśle go drugi raz przez Web Push. */
+let ackBusy = false;
+let ackAgain = false;
+export async function syncLocalNotifsToPushState() {
+  if (isDevMode() || !cfg.token || !navigator.onLine) return;
+  const pending = loadPendingAck();
+  const entries = Object.entries(pending).filter(([, ts]) => typeof ts === "number" && ts > 0);
+  if (!entries.length) return;
+  if (ackBusy) {
+    ackAgain = true;
+    return;
+  }
+  ackBusy = true;
+  try {
+    const endpoint = await currentPushEndpoint();
+    if (!endpoint) return;
+    const devId = await devicePushId(endpoint);
+    if (!devId) return;
+
+    for (let i = 0; i < 3; i++) {
+      let state = { sent: {}, fail: {} };
+      let sha = null;
+      const g = await ghFile(PUSH_STATE_FILE, "GET", null, PUSH_BRANCH);
+      if (g.status === 200) {
+        const o = await g.json();
+        sha = o.sha;
+        try {
+          const parsed = JSON.parse(b64d(o.content || ""));
+          if (parsed && typeof parsed === "object") state = parsed;
+        } catch (e) {}
+      } else if (g.status !== 404) {
+        return;
+      }
+      if (!state.sent || typeof state.sent !== "object") state.sent = {};
+      if (!state.fail || typeof state.fail !== "object") state.fail = {};
+
+      let dirty = false;
+      for (const [id, ts] of entries) {
+        const cur = state.sent[id];
+        if (typeof cur === "number") continue;
+        if (!cur || typeof cur !== "object") state.sent[id] = {};
+        if (!(state.sent[id][devId] >= ts)) {
+          state.sent[id][devId] = ts;
+          dirty = true;
+        }
+      }
+
+      if (dirty) {
+        const body = {
+          message: "Powiadomienia: dostarczono lokalnie",
+          content: b64e(JSON.stringify(state, null, 2) + "\n"),
+          branch: PUSH_BRANCH,
+        };
+        if (sha) body.sha = sha;
+        const p = await ghFile(PUSH_STATE_FILE, "PUT", body, PUSH_BRANCH);
+        if (p.status === 409 || p.status === 422) continue;
+        if (!p.ok) return;
+      }
+
+      const curPending = loadPendingAck();
+      for (const [id, ts] of entries) {
+        if (curPending[id] <= ts) delete curPending[id];
+      }
+      savePendingAck(curPending);
+      return;
+    }
+  } catch (e) {
+  } finally {
+    ackBusy = false;
+    if (ackAgain) {
+      ackAgain = false;
+      syncLocalNotifsToPushState();
+    }
+  }
+}
+
 let notifying = false;
 export async function notifyDue() {
   if (notifying || notifState() !== "granted") return;
   notifying = true;
   try {
     const seen = loadSeen();
+    const swSeen = await readSwPushSeen();
     const live = new Set(cache.plan.tasks.map((t) => t.id));
     let ch = false;
+    for (const k in swSeen) {
+      if (live.has(k) && typeof swSeen[k] === "number" && !(seen[k] >= swSeen[k])) {
+        seen[k] = swSeen[k];
+        ch = true;
+      }
+    }
     for (const k in seen) {
       if (!live.has(k)) { delete seen[k]; ch = true; }
+    }
+    const pendingAck = loadPendingAck();
+    let ackCh = false;
+    for (const k in pendingAck) {
+      if (!live.has(k)) { delete pendingAck[k]; ackCh = true; }
     }
     for (const a of activeAlerts()) {
       if (a.s !== "soon") continue;
@@ -168,11 +312,18 @@ export async function notifyDue() {
       if (sn && (!w || sn >= w.start.getTime())) continue;
       const x = alertTexts(a);
       if (await showNotif(x.title, x.body, a.t.id)) {
-        seen[a.t.id] = Date.now();
+        const ts = Math.max(Date.now(), w ? w.start.getTime() : 0);
+        seen[a.t.id] = ts;
         ch = true;
+        if (!isDevMode()) {
+          pendingAck[a.t.id] = ts;
+          ackCh = true;
+        }
       }
     }
     if (ch) saveSeen(seen);
+    if (ackCh) savePendingAck(pendingAck);
+    if (Object.keys(pendingAck).length) syncLocalNotifsToPushState();
   } finally {
     notifying = false;
   }

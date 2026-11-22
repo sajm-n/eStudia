@@ -187,12 +187,98 @@ try {
     return { hasGrid, hasExBtn, exTitle, hasSesAdd, hasExDone, hasSubjAdd, hasMorningOpt, hasDevOn, devBarShown, devPlanLoaded, realUntouched, devExited, dayMoveOpens };
   })()`);
 
-  // 2. Mobile viewport: kalendarz #cal i render planu bez błędów
+  // 2. Mobile viewport: kalendarz #cal, render planu i logika v2.8.5 (brak duplikatu alertu kolokwium oraz „Do zrobienia” tylko dla zadań)
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await new Promise((r) => setTimeout(r, 250));
-  const mob = await evalJs(`(() => {
+  const mob = await evalJs(`(async () => {
     const calBtns = document.querySelectorAll("#cal .cg button").length;
-    return { calBtns };
+    const now = new Date();
+    const tmr = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const pad = (n) => String(n).padStart(2, "0");
+    const tmrKey = tmr.getFullYear() + "-" + pad(tmr.getMonth() + 1) + "-" + pad(tmr.getDate());
+    const tmrWd = (tmr.getDay() + 6) % 7;
+
+    const loadDev = async (plan) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([JSON.stringify(plan)], "v285.json", { type: "application/json" }));
+      const inp = document.getElementById("devImpf");
+      inp.files = dt.files;
+      inp.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 150));
+      let dayBtn = document.querySelector("#cal [data-day='" + tmrKey + "']");
+      if (!dayBtn) {
+        const nextWk = document.querySelector("#cal [data-a='wk:1']");
+        if (nextWk) {
+          nextWk.click();
+          await new Promise((r) => setTimeout(r, 120));
+          dayBtn = document.querySelector("#cal [data-day='" + tmrKey + "']");
+        }
+      }
+      if (dayBtn) {
+        dayBtn.click();
+        await new Promise((r) => setTimeout(r, 120));
+      }
+    };
+
+    // Włącz tryb dev, żeby nie modyfikować prawdziwego planu
+    document.querySelector("[data-a='set:']").click();
+    await new Promise((r) => setTimeout(r, 120));
+    document.querySelector("[data-sh='devon']").click();
+    await new Promise((r) => setTimeout(r, 120));
+    document.querySelector("[data-sh=close]").click();
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Scenariusz A: samo kolokwium z aktywnym alertem -> górny alert widoczny, dolna pigułka ukryta, karta bez „Do zrobienia”
+    await loadDev({
+      v: 1,
+      rev: 1,
+      start: "2026-10-05",
+      startWeek: "B",
+      classes: [
+        { id: "c1", name: "Wprowadzenie do informatyki technicznej", type: "l", wd: tmrWd, weeks: "all", s: "11:30", e: "13:00", room: "R515", person: "" },
+      ],
+      exceptions: [],
+      subjects: [],
+      tasks: [
+        { id: "ex1", cat: "exam", text: "Kolokwium 1", cid: "c1", date: tmrKey, due: tmrKey, time: "11:30", rem: { m: "rel", min: 2880 }, done: false },
+      ],
+    });
+    const alertExamShown = !!document.querySelector("#alerts .al.exam");
+    const aheadExamHiddenWhenAlert = !document.querySelector("#ahead .ah.exam");
+    const cardOnlyExamHasExam = !!document.querySelector("#list .c .ev.exam");
+    const cardOnlyExamNoTodo = !document.querySelector("#list .c .ev.tk");
+
+    // Scenariusz B: kolokwium (bez aktywnego alertu) + sprawozdanie -> dolna pigułka widoczna, karta ma „Kolokwium” i „Do zrobienia: 1”
+    await loadDev({
+      v: 1,
+      rev: 2,
+      start: "2026-10-05",
+      startWeek: "B",
+      classes: [
+        { id: "c1", name: "Wprowadzenie do informatyki technicznej", type: "l", wd: tmrWd, weeks: "all", s: "11:30", e: "13:00", room: "R515", person: "" },
+      ],
+      exceptions: [],
+      subjects: [],
+      tasks: [
+        { id: "ex2", cat: "exam", text: "Kolokwium 2", cid: "c1", date: tmrKey, due: tmrKey, time: "11:30", rem: { m: "rel", min: 1 }, done: false },
+        { id: "rp1", cat: "report", text: "Sprawozdanie 1", cid: "c1", date: tmrKey, due: tmrKey, time: "11:30", rem: { m: "rel", min: 1 }, done: false },
+      ],
+    });
+    const aheadExamShownWithoutAlert = !!document.querySelector("#ahead .ah.exam");
+    const cardWithReportTodoText = (document.querySelector("#list .c .ev.tk") || {}).textContent || "";
+
+    document.querySelector("[data-a='devexit:']").click();
+    await new Promise((r) => setTimeout(r, 100));
+
+    return {
+      calBtns,
+      alertExamShown,
+      aheadExamHiddenWhenAlert,
+      cardOnlyExamHasExam,
+      cardOnlyExamNoTodo,
+      aheadExamShownWithoutAlert,
+      cardWithReportTodoText,
+    };
   })()`);
 
   ws.close();
@@ -211,7 +297,13 @@ try {
     !desk.realUntouched ||
     !desk.devExited ||
     !desk.dayMoveOpens ||
-    mob.calBtns < 7
+    mob.calBtns < 7 ||
+    !mob.alertExamShown ||
+    !mob.aheadExamHiddenWhenAlert ||
+    !mob.cardOnlyExamHasExam ||
+    !mob.cardOnlyExamNoTodo ||
+    !mob.aheadExamShownWithoutAlert ||
+    mob.cardWithReportTodoText !== "Do zrobienia: 1"
   ) {
     throw new Error("Niepowodzenie testu dymnego: " + JSON.stringify({ desk, mob }));
   }

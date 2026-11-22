@@ -731,6 +731,7 @@ function tick() {
   }
   tickClock();
   renderAlerts();
+  renderAhead();
 }
 function trySync() {
   lastSync = Date.now();
@@ -745,7 +746,10 @@ document.addEventListener("visibilitychange", () => {
   checkUpdate();
 });
 addEventListener("pageshow", fresh);
-addEventListener("online", trySync);
+addEventListener("online", () => {
+  trySync();
+  syncLocalNotifsToPushState();
+});
 
 if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
   addEventListener("load", () => {

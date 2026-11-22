@@ -69,10 +69,30 @@ commit_state() {
   git -C "$STATE_DIR" commit -q --amend -m "Powiadomienia: stan wysyłki"
   git_state push -q --force-with-lease origin "HEAD:$STATE_BRANCH" && return 0
 
-  # Ktoś (aplikacja) wypchnął w międzyczasie: pobierz najnowsze subskrypcje i dołóż nasz push-state.json
+  # Ktoś (aplikacja) wypchnął w międzyczasie: pobierz najnowsze subskrypcje i scal push-state.json (bez utraty lokalnych potwierdzeń)
   cp "$STATE_DIR/push-state.json" /tmp/push-state.mine.json
   sync_state || return 1
-  cp /tmp/push-state.mine.json "$STATE_DIR/push-state.json"
+  node -e '
+    const fs = require("node:fs");
+    const read = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } };
+    const rem = read(process.argv[1]);
+    const mine = read(process.argv[2]);
+    const out = Object.assign({}, rem, mine);
+    out.sent = Object.assign({}, rem.sent || {});
+    for (const [id, v] of Object.entries(mine.sent || {})) {
+      if (typeof v === "number" || typeof out.sent[id] === "number") {
+        out.sent[id] = typeof v === "number" ? v : out.sent[id];
+      } else if (v && typeof v === "object") {
+        const dst = (out.sent[id] && typeof out.sent[id] === "object") ? Object.assign({}, out.sent[id]) : {};
+        for (const [d, ts] of Object.entries(v)) {
+          if (typeof ts === "number" && !(dst[d] >= ts)) dst[d] = ts;
+        }
+        out.sent[id] = dst;
+      }
+    }
+    if (rem.hb && mine.hb) out.hb = Date.parse(rem.hb) > Date.parse(mine.hb) ? rem.hb : mine.hb;
+    fs.writeFileSync(process.argv[1], JSON.stringify(out, null, 2) + "\n");
+  ' "$STATE_DIR/push-state.json" /tmp/push-state.mine.json
   [ -z "$(git -C "$STATE_DIR" status --porcelain push-state.json)" ] && return 0
   git -C "$STATE_DIR" add push-state.json
   git -C "$STATE_DIR" commit -q --amend -m "Powiadomienia: stan wysyłki"

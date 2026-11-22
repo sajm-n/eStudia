@@ -3,6 +3,7 @@
 import { TYPES, TYPE_PAIRS, REC_PAIRS, DOW, DOWS } from "../config.js";
 import { day0, wd, same, dk, fromDK, normT, mn, fmtT, uid, overlaps, isLate, taskGroup, taskCat, isExamTask, isTaskDone, taskTitle, itemsFor, tasksForClass, absencesOf, isAbsentOn, absenceLimit, dayOverrideOf, dayOverrideTarget } from "../core.js";
 import { cache } from "../sync.js";
+import { activeAlerts } from "../push.js";
 import { $, esc, K, reduced, isDesk, wk, pre, items, dl, dlong, t5, selOpts, ui, app } from "../state.js";
 import { openSheet, closeSheet, toast, change, playGo } from "./sheet.js";
 import { tasksOf, taskMeta, taskHeadingHtml, taskNoteHtml, taskFieldsHtml, bindTaskForm, subjValueForName, applySubject, taskLabelOf } from "./tasks.js";
@@ -168,6 +169,7 @@ function weekGrid(mon, td, nm) {
           const h = Math.max(22, ((o.e - o.s) / 60) * WG_H - 3);
           const sh = h < 42;
           const open = tasksOf(x).filter((t) => !isTaskDone(t, ui.now, cache.plan));
+          const openTodo = open.filter((t) => !isExamTask(t));
           const hasExam = open.some(isExamTask);
           const aria =
             (ui.editMode ? "Edytuj: " : "Szczegóły i zadania: ") +
@@ -180,7 +182,7 @@ function weekGrid(mon, td, nm) {
             (c.person ? ", " + c.person : "") +
             (x.off ? ", odwołane" : "") +
             (hasExam ? ", kolokwium" : "") +
-            (open.length ? ", nieukończone zadania: " + open.length : "");
+            (openTodo.length ? ", nieukończone zadania: " + openTodo.length : "");
           const tip =
             c.name + " · " + fmtT(c.s) + "–" + fmtT(c.e) + (c.room ? " · " + c.room : "") + (c.person ? " · " + c.person : "");
           return (
@@ -280,18 +282,19 @@ function card(it, cls, badge) {
   else if (it.ex) tags.push('<span class="ev warn">Zmiana tego dnia</span>');
   if (isAbsentOn(cache.plan, it.id, it.date)) tags.push('<span class="ev warn">Nieobecność</span>');
   const open = tasksOf(it).filter((t) => !isTaskDone(t, ui.now, cache.plan));
+  const openTodo = open.filter((t) => !isExamTask(t));
   const hasSession = open.some((t) => taskCat(t) === "session");
   const hasKolos = open.some((t) => isExamTask(t) && taskCat(t) !== "session");
   const hasExam = hasSession || hasKolos;
   if (hasSession) tags.push('<span class="ev exam"><i></i>Sesja</span>');
   if (hasKolos) tags.push('<span class="ev exam"><i></i>Kolokwium</span>');
-  if (open.length) tags.push('<span class="ev tk"><i></i>Do zrobienia: ' + open.length + "</span>");
+  if (openTodo.length) tags.push('<span class="ev tk"><i></i>Do zrobienia: ' + openTodo.length + "</span>");
   const act =
     ' role="button" tabindex="0" aria-label="' +
     (ui.editMode ? "Edytuj: " : "Szczegóły i zadania: ") +
     esc(c.name) +
     (hasExam ? ", kolokwium" : "") +
-    (open.length ? ", nieukończone zadania: " + open.length : "") +
+    (openTodo.length ? ", nieukończone zadania: " + openTodo.length : "") +
     '"';
   const data = ' data-s="' + mn(c.s) + '" data-e="' + mn(c.e) + '"';
   return (
@@ -510,7 +513,7 @@ function taskDots() {
 }
 
 /* Pasek podsumowania „Co przede mną” (najbliższe kolokwium/sesja, zaległe, najbliższe 7 dni) */
-function renderAhead() {
+export function renderAhead() {
   const box = $("ahead");
   if (!box) return;
   const td = day0(ui.now);
@@ -536,8 +539,15 @@ function renderAhead() {
     }
   }
 
+  const shownExamAlerts = new Set(
+    activeAlerts(ui.now)
+      .slice(0, 3)
+      .filter((a) => isExamTask(a.t))
+      .map((a) => a.t.id)
+  );
+
   const pills = [];
-  if (nextExam) {
+  if (nextExam && !shownExamAlerts.has(nextExam.t.id)) {
     const when =
       nextExam.diff === 0
         ? "dziś"
