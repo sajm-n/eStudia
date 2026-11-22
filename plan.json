@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795390642038,
+  "rev": 1795390646182,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -590,7 +590,7 @@
     },
     "morning": {
       "on": true,
-      "time": "07:00"
+      "time": "06:00"
     }
   },
   "semester": "Semestr 1 (2026/27)",
