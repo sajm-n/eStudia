@@ -533,6 +533,8 @@ body.resizing,body.resizing *{cursor:ns-resize !important;-webkit-user-select:no
 .wb-drop span{display:block;font-size:12px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wb-drop.wb-add{opacity:.92}
 .wb-drop.wb-add span{color:var(--ac);opacity:.9}
+.wb-drop.sh{padding:2px 6px;display:flex;align-items:center;gap:6px}
+.wb-drop.sh b,.wb-drop.sh span{display:inline;white-space:nowrap}
 
 .drag-ghost{position:fixed;z-index:80;pointer-events:none;box-sizing:border-box;padding:6px 9px;border-radius:10px;border:2px solid var(--ac);box-shadow:0 16px 36px rgba(10,20,40,.34);color:#f3f5fa;opacity:.94;transform:scale(1.03);overflow:hidden}
 .drag-ghost.w{background:var(--wyk)}.drag-ghost.l{background:var(--lab)}.drag-ghost.c2{background:var(--cw)}.drag-ghost.x{background:var(--oth)}

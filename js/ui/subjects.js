@@ -1,78 +1,44 @@
 /* ===== Katalog przedmiotów, wymagania, notatki i zgodność z MacBookiem ===== */
 
 import { GROUPS, MAC_OPTS, MAC_TXT } from "../config.js";
-import { dk, mn, uid, isLate, taskGroup, isExamTask, isTaskDone, taskSubjectName, taskTitle, absencesOf, absenceLimit, typeLabel, typeOrderIndex } from "../core.js";
+import { uid, isLate, taskGroup, isExamTask, isTaskDone, taskSubjectName, taskTitle, absencesOf, absenceLimit, typeLabel, typeOrderIndex, normSubjName, oneOffEnded, subjectsOf } from "../core.js";
 import { cache } from "../sync.js";
-import { $, esc, reduced, nameLc, ui } from "../state.js";
+import { $, esc, reduced, ui } from "../state.js";
 import { openSheet, change } from "./sheet.js";
 import { tkKey, taskMeta, taskHeadingHtml, taskNoteHtml, taskCheckHtml } from "./tasks.js";
 
 const FORM_LABEL = (t) => (t === "x" ? "Zajęcia" : t === "g" ? "Informacje" : typeLabel(cache.plan, t));
 
-/* Jednorazowe zajęcia, które już się odbyły (data minęła albo dziś po godzinie zakończenia) */
-function oneOffEnded(c) {
-  if (!c.date) return false;
-  const n = new Date();
-  const t = dk(n);
-  return c.date < t || (c.date === t && mn(c.e) <= n.getHours() * 60 + n.getMinutes());
-}
-
 export function subjTasks(name) {
-  const k = nameLc(name);
-  return cache.plan.tasks.filter((t) => nameLc(taskSubjectName(cache.plan, t)) === k);
+  const k = normSubjName(name);
+  return cache.plan.tasks.filter((t) => normSubjName(taskSubjectName(cache.plan, t)) === k);
 }
 
 export function subjectList() {
-  const map = new Map();
-  const get = (n) => {
-    const k = nameLc(n);
-    let e = map.get(k);
-    if (!e) {
-      e = { name: n, types: [], persons: [] };
-      map.set(k, e);
-    }
-    return e;
-  };
-  const live = new Set();
-  const gone = new Set();
-  for (const c of cache.plan.classes) {
-    /* minione zajęcia jednorazowe nie tworzą przedmiotu, chyba że ma on jeszcze otwarte zadania */
-    if (oneOffEnded(c) && !subjTasks(c.name).some((t) => !isTaskDone(t, ui.now, cache.plan))) {
-      gone.add(nameLc(c.name));
-      continue;
-    }
-    live.add(nameLc(c.name));
-    const e = get(c.name);
-    if (c.type !== "x" && !e.types.includes(c.type)) e.types.push(c.type);
-    if (c.person && !e.persons.includes(c.person)) e.persons.push(c.person);
-  }
-  const hidden = (n) => {
-    const k = nameLc(n);
-    return gone.has(k) && !live.has(k);
-  };
-  for (const s of cache.plan.subjects) {
-    if (!hidden(s.name)) get(s.name);
-  }
-  const a = [...map.values()];
-  a.forEach((e) => e.types.sort((x, y) => typeOrderIndex(x) - typeOrderIndex(y) || x.localeCompare(y, "pl")));
-  return a.sort((x, y) => x.name.localeCompare(y.name, "pl"));
+  return subjectsOf(cache.plan, ui.now);
 }
 
 /* Formy zajęć przedmiotu (wykład, laboratorium, ćwiczenia…) z prowadzącymi z planu */
 export function subjForms(name) {
-  const k = nameLc(name);
+  const k = normSubjName(name);
+  const oneOffCount = new Map();
+  for (const c of cache.plan.classes) {
+    if (!c.date || normSubjName(c.name) !== k) continue;
+    oneOffCount.set(c.type, (oneOffCount.get(c.type) || 0) + 1);
+  }
   const m = new Map();
   for (const c of cache.plan.classes) {
-    if (nameLc(c.name) === k) {
-      let e = m.get(c.type);
-      if (!e) m.set(c.type, (e = { type: c.type, persons: [] }));
-      if (c.person && !e.persons.includes(c.person)) e.persons.push(c.person);
-    }
+    if (normSubjName(c.name) !== k) continue;
+    const isSeries = !!c.date && (oneOffCount.get(c.type) || 0) > 1;
+    if (c.date && !isSeries && oneOffEnded(c, ui.now)) continue;
+    let e = m.get(c.type);
+    if (!e) m.set(c.type, (e = { type: c.type, persons: [] }));
+    if (c.person && !e.persons.includes(c.person)) e.persons.push(c.person);
   }
   return [...m.values()].sort((a, b) => typeOrderIndex(a.type) - typeOrderIndex(b.type) || a.type.localeCompare(b.type, "pl"));
 }
 
-export const subjRec = (name) => cache.plan.subjects.find((s) => nameLc(s.name) === nameLc(name)) || null;
+export const subjRec = (name) => cache.plan.subjects.find((s) => normSubjName(s.name) === normSubjName(name)) || null;
 export const hasNotes = (r) => !!(r && (r.req || r.desc || Object.keys(r.forms || {}).length));
 export const macOf = (name) => {
   const r = subjRec(name);
@@ -80,9 +46,10 @@ export const macOf = (name) => {
 };
 
 export function ensureSubject(p, name) {
-  let s = p.subjects.find((x) => nameLc(x.name) === nameLc(name));
+  const clean = String(name || "").trim().replace(/\s+/g, " ");
+  let s = p.subjects.find((x) => normSubjName(x.name) === normSubjName(clean));
   if (!s) {
-    s = { id: uid(), name, desc: "", req: "", forms: {}, mac: "" };
+    s = { id: uid(), name: clean, desc: "", req: "", forms: {}, mac: "" };
     p.subjects.push(s);
   }
   return s;
@@ -100,26 +67,34 @@ export function renderSubjects() {
         .map((e) => {
           const rec = subjRec(e.name);
           const open = subjTasks(e.name).filter((t) => !isTaskDone(t, ui.now, cache.plan)).length;
-          const absChips = cache.plan.classes
-            .filter((c) => nameLc(c.name) === nameLc(e.name))
-            .map((c) => {
-              const cnt = absencesOf(cache.plan, c.id).length;
-              if (!cnt) return "";
-              const lim = absenceLimit(cache.plan, c);
-              const cls = lim !== null ? (cnt > lim ? " abs-bad" : cnt === lim ? " warn" : "") : "";
-              const lbl = c.type !== "x" ? typeLabel(cache.plan, c.type).slice(0, 3) + "." : "";
+          const absByType = new Map();
+          for (const c of cache.plan.classes) {
+            if (normSubjName(c.name) !== normSubjName(e.name)) continue;
+            const cnt = absencesOf(cache.plan, c.id).length;
+            if (!cnt) continue;
+            let g = absByType.get(c.type);
+            if (!g) {
+              g = { type: c.type, cnt: 0, lim: absenceLimit(cache.plan, c) };
+              absByType.set(c.type, g);
+            }
+            g.cnt += cnt;
+          }
+          const absChips = [...absByType.values()]
+            .sort((a, b) => typeOrderIndex(a.type) - typeOrderIndex(b.type) || a.type.localeCompare(b.type, "pl"))
+            .map((g) => {
+              const cls = g.lim !== null ? (g.cnt > g.lim ? " abs-bad" : g.cnt === g.lim ? " warn" : "") : "";
+              const lbl = g.type !== "x" ? typeLabel(cache.plan, g.type).slice(0, 3) + "." : "";
               return (
                 '<span class="ev' +
                 cls +
                 '">Nieob.' +
                 (lbl ? " " + esc(lbl) : "") +
                 ": " +
-                cnt +
-                (lim !== null ? "/" + lim : "") +
+                g.cnt +
+                (g.lim !== null ? "/" + g.lim : "") +
                 "</span>"
               );
             })
-            .filter(Boolean)
             .join("");
           return (
             '<button type="button" class="sbi" data-a="sj:' +
@@ -232,7 +207,7 @@ function sjTaskRow(t) {
 }
 
 export function openSubject(name, tab, focus) {
-  const e = subjectList().find((x) => nameLc(x.name) === nameLc(name));
+  const e = subjectList().find((x) => normSubjName(x.name) === normSubjName(name));
   if (!e) return;
   const forms = subjForms(e.name);
   const keys = forms.length ? forms.map((f) => f.type) : ["g"];

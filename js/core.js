@@ -1051,4 +1051,74 @@ export function mergeSchedule(currentPlan, importedPlan) {
   };
 }
 
+/* ===== Lista przedmiotów (z obsługą pojedynczych zajęć jednorazowych oraz serii jednorazowych) ===== */
+export const normSubjName = (s) => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
 
+/* Jednorazowe zajęcia, które już się odbyły (data minęła albo dziś po godzinie zakończenia) */
+export function oneOffEnded(c, now = new Date()) {
+  if (!c || !c.date) return false;
+  const n = now instanceof Date ? now : new Date();
+  const t = dk(n);
+  return c.date < t || (c.date === t && mn(c.e) <= n.getHours() * 60 + n.getMinutes());
+}
+
+export function subjectsOf(plan, now = new Date()) {
+  const classes = Array.isArray(plan && plan.classes) ? plan.classes : [];
+  const subjects = Array.isArray(plan && plan.subjects) ? plan.subjects : [];
+
+  /* Policz zajęcia jednorazowe o tej samej znormalizowanej nazwie i tym samym typie */
+  const oneOffCount = new Map();
+  for (const c of classes) {
+    if (!c.date) continue;
+    const nk = normSubjName(c.name);
+    if (!nk) continue;
+    const k = nk + "|" + c.type;
+    oneOffCount.set(k, (oneOffCount.get(k) || 0) + 1);
+  }
+
+  const map = new Map();
+  const get = (n) => {
+    const clean = String(n || "").trim().replace(/\s+/g, " ");
+    const k = clean.toLowerCase();
+    if (!k) return null;
+    let e = map.get(k);
+    if (!e) {
+      e = { name: clean, types: [], persons: [] };
+      map.set(k, e);
+    }
+    return e;
+  };
+
+  const live = new Set();
+  const gone = new Set();
+
+  for (const c of classes) {
+    const nk = normSubjName(c.name);
+    if (!nk) continue;
+    const isSeries = !!c.date && (oneOffCount.get(nk + "|" + c.type) || 0) > 1;
+    /* Pojedyncze zajęcia jednorazowe usuwamy z listy przedmiotów po ich odbyciu.
+       Serie (>1 jednorazowe o tej samej nazwie i tym samym typie) łączymy w jeden przedmiot
+       i zachowujemy nawet po zakończeniu wszystkich zaplanowanych terminów. */
+    if (c.date && !isSeries && oneOffEnded(c, now)) {
+      gone.add(nk);
+      continue;
+    }
+    live.add(nk);
+    const e = get(c.name);
+    if (!e) continue;
+    if (c.type !== "x" && !e.types.includes(c.type)) e.types.push(c.type);
+    if (c.person && !e.persons.includes(c.person)) e.persons.push(c.person);
+  }
+
+  const hidden = (n) => {
+    const k = normSubjName(n);
+    return gone.has(k) && !live.has(k);
+  };
+  for (const s of subjects) {
+    if (!hidden(s.name)) get(s.name);
+  }
+
+  const a = [...map.values()];
+  a.forEach((e) => e.types.sort((x, y) => typeOrderIndex(x) - typeOrderIndex(y) || x.localeCompare(y, "pl")));
+  return a.sort((x, y) => x.name.localeCompare(y.name, "pl"));
+}

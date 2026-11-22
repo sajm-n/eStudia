@@ -10,8 +10,11 @@ import { shiftWeek } from "./plan.js";
 const WG_H = 52;
 const SNAP = 15; // skok w minutach
 const ADD_DUR = 90; // domyślny czas trwania nowych zajęć po kliknięciu w siatkę (min)
-const MIN_M = 480; // 08:00
-const MAX_M = 1200; // 20:00
+const MIN_DUR = 30; // minimalny czas trwania zajęć przy rozciąganiu i dodawaniu kliknięciem (min)
+const MIN_M = 480; // 08:00 (domyślna granica mobilna)
+const MAX_M = 1200; // 20:00 (domyślna granica mobilna)
+const DAY_MAX_M = 1425; // 23:45 — maksymalna poprawna godzina zakończenia (normT wymaga < 24:00)
+const GRID_MAX_HI = 1440; // 24:00 — górna granica etykiet siatki
 const HOVER_DELAY = 550; // ms najechania na strzałkę tygodnia
 const EDGE_DELAY = 600; // ms przy krawędzi ekranu na telefonie
 const CARD_LP_MS = 260; // czas przytrzymania (long-press) bezpośrednio na kafelku zajęć
@@ -257,11 +260,12 @@ function calcAddSlot(col, clientY) {
   const r = col.getBoundingClientRect();
   const lo = +col.dataset.lo;
   const hi = +col.dataset.hi;
-  const dur = Math.min(ADD_DUR, Math.max(30, hi - lo));
+  const maxEnd = Math.min(hi, DAY_MAX_M);
+  const minDur = Math.min(MIN_DUR, Math.max(SNAP, maxEnd - lo));
   const relY = clientY - r.top;
   const rawS = lo + (relY / WG_H) * 60;
-  const sMin = Math.max(lo, Math.min(hi - dur, Math.floor(rawS / SNAP) * SNAP));
-  const eMin = sMin + dur;
+  const sMin = Math.max(lo, Math.min(maxEnd - minDur, Math.floor(rawS / SNAP) * SNAP));
+  const eMin = Math.min(maxEnd, sMin + ADD_DUR);
   return {
     date: col.dataset.date,
     sMin,
@@ -282,12 +286,39 @@ function updateAddPreview(col, clientY) {
   if (addPreviewEl.parentElement !== col) col.appendChild(addPreviewEl);
   addPreviewEl.style.top = slot.top + "px";
   addPreviewEl.style.height = slot.height + "px";
+  addPreviewEl.classList.toggle("sh", slot.height < 42);
   addPreviewEl.style.display = "";
   addPreviewEl.querySelector("b").textContent = fmtT(slot.s) + "–" + fmtT(slot.e);
   addPreviewEl.querySelector("span").textContent = "+ Nowe zajęcia";
 }
 
-/* ----- Desktop: ruch i zmiana rozmiaru na siatce tygodnia (ściśle w zakresie 8:00–20:00) ----- */
+function setGridHi(wg, lo, nextHi) {
+  if (!wg) return;
+  const H = ((nextHi - lo) / 60) * WG_H;
+  const steps = Math.round((nextHi - lo) / 60);
+  const tEl = wg.querySelector(".wg-t");
+  if (tEl) {
+    let lab = "";
+    for (let m = lo, i = 0; m <= nextHi; m += 60, i++) {
+      lab +=
+        "<span" +
+        (i === 0 ? ' class="f"' : i === steps ? ' class="l"' : "") +
+        ' style="top:' +
+        i * WG_H +
+        'px">' +
+        m / 60 +
+        ":00</span>";
+    }
+    tEl.style.height = H + "px";
+    tEl.innerHTML = lab;
+  }
+  wg.querySelectorAll(".wg-c[data-date]").forEach((c) => {
+    c.style.height = H + "px";
+    c.dataset.hi = String(nextHi);
+  });
+}
+
+/* ----- Desktop: ruch po całej aktualnej siatce (bez jej rozszerzania) oraz rozciąganie z rozszerzaniem siatki ----- */
 function updateDesktopMove(clientX, clientY) {
   if (!active) return;
   const g = active.ghost;
@@ -344,11 +375,13 @@ function updateDesktopMove(clientX, clientY) {
   const r = col.getBoundingClientRect();
   const lo = +col.dataset.lo;
   const hi = +col.dataset.hi;
+  const maxEnd = Math.min(hi, DAY_MAX_M);
   const relY = clientY - active.offY - r.top;
   const rawS = lo + (relY / WG_H) * 60;
   const dur = active.origE - active.origS;
-  const sMin = Math.max(MIN_M, Math.min(MAX_M - dur, snapMin(rawS)));
-  const eMin = sMin + dur;
+  const maxS = Math.max(lo, maxEnd - dur);
+  const sMin = Math.max(lo, Math.min(maxS, snapMin(rawS)));
+  const eMin = Math.min(maxEnd, sMin + dur);
 
   active.newDate = col.dataset.date;
   active.newS = toTime(sMin);
@@ -356,9 +389,10 @@ function updateDesktopMove(clientX, clientY) {
 
   if (active.dropEl.parentElement !== col) col.appendChild(active.dropEl);
   const top = ((sMin - lo) / 60) * WG_H + 1;
-  const h = Math.max(22, (dur / 60) * WG_H - 3);
+  const h = Math.max(22, ((eMin - sMin) / 60) * WG_H - 3);
   active.dropEl.style.top = top + "px";
   active.dropEl.style.height = h + "px";
+  active.dropEl.classList.toggle("sh", h < 42);
   active.dropEl.style.display = sMin >= lo && eMin <= hi ? "" : "none";
   active.dropEl.querySelector("b").textContent = fmtT(active.newS) + "–" + fmtT(active.newE);
   active.dropEl.querySelector("span").textContent = active.name;
@@ -372,16 +406,25 @@ function updateDesktopResize(clientY) {
   if (!active || !active.colEl) return;
   const r = active.colEl.getBoundingClientRect();
   const lo = +active.colEl.dataset.lo;
-  const hi = +active.colEl.dataset.hi;
-  const maxEnd = Math.min(MAX_M, hi);
+  const curHi = +active.colEl.dataset.hi;
   const relY = clientY - r.top;
   const rawE = lo + (relY / WG_H) * 60;
-  const eMin = Math.max(active.origS + 30, Math.min(maxEnd, snapMin(rawE)));
+  const minEnd = Math.min(DAY_MAX_M, active.origS + MIN_DUR);
+  const eMin = Math.max(minEnd, Math.min(DAY_MAX_M, snapMin(rawE)));
+  const neededHi = Math.min(GRID_MAX_HI, Math.max(active.origHi, Math.ceil(eMin / 60) * 60));
+  if (neededHi !== curHi) {
+    setGridHi(active.colEl.closest(".wg"), lo, neededHi);
+  }
   active.newE = toTime(eMin);
   const h = Math.max(22, ((eMin - active.origS) / 60) * WG_H - 3);
   active.srcEl.style.height = h + "px";
+  active.srcEl.classList.toggle("sh", h < 42);
   const bEl = active.srcEl.querySelector(".wb-top b");
   if (bEl) bEl.textContent = fmtT(active.newS) + "–" + fmtT(active.newE);
+  const sc = $("scroller");
+  if (sc && clientY > innerHeight - 56 && r.bottom > innerHeight - 70 && eMin < DAY_MAX_M) {
+    sc.scrollTop += 20;
+  }
 }
 
 /* ----- Mobile: pełny przesuwany kafelek, który płynnie kurczy się do pigułki nad kalendarzem ----- */
@@ -693,6 +736,7 @@ export function initDrag() {
         height: rect.height,
         srcEl: wb,
         colEl,
+        origHi: colEl ? +colEl.dataset.hi : MAX_M,
         started: false,
         ghost: null,
         dropEl: null,
@@ -783,7 +827,7 @@ export function initDrag() {
 
             const hint = document.createElement("div");
             hint.className = "drag-hint";
-            hint.textContent = "Upuść na wybraną godzinę (8–20) · ← / → lub najedź na ‹ › aby zmienić tydzień · Esc anuluje";
+            hint.textContent = "Upuść na wybraną godzinę · ← / → lub najedź na ‹ › aby zmienić tydzień · Esc anuluje";
             document.body.appendChild(hint);
             active.hintEl = hint;
             markWeekButtons(true);

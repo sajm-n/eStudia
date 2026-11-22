@@ -722,6 +722,7 @@ function tick() {
   tickClock();
   renderAlerts();
   renderAhead();
+  if (ui.tab === "subj") renderSubjects();
 }
 function trySync() {
   lastSync = Date.now();

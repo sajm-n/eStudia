@@ -40,6 +40,8 @@ import {
   typePairsOf,
   mergeSchedule,
   isManualClass,
+  oneOffEnded,
+  subjectsOf,
 } from "../js/core.js";
 import { DEFAULT_PLAN } from "../js/config.js";
 
@@ -671,6 +673,60 @@ test("v2.9.2: mergeSchedule dopisuje ręcznie dodane zajęcia i wydarzenia (cykl
   assert.deepEqual(p.absences, [{ cid: "knewmanual123", date: "2026-10-14" }]);
   assert.equal(res.stats.keptManual.length, 2);
   assert.equal(res.stats.removed.length, 1);
+});
+
+test("v3.0.0: subjectsOf usuwa pojedyncze minione zajęcia jednorazowe, a serie >1 o tej samej nazwie i typie scala i zachowuje", () => {
+  const plan = {
+    v: 1,
+    start: "2026-10-05",
+    startWeek: "B",
+    classes: [
+      /* Zwykłe zajęcia cykliczne */
+      { id: "c1", name: "Matematyka I", type: "w", wd: 0, weeks: "all", s: "08:00", e: "09:30", room: "", person: "dr A" },
+      /* Pojedyncze jednorazowe, które już się odbyło */
+      { id: "o1", name: "Przysposobienie biblioteczne", type: "x", date: "2026-10-23", s: "11:30", e: "13:00", room: "", person: "" },
+      /* Pojedyncze jednorazowe, które dopiero się odbędzie */
+      { id: "o2", name: "Wykład otwarty", type: "w", date: "2026-12-05", s: "14:00", e: "15:30", room: "", person: "prof. Z" },
+      /* Seria >1 jednorazowych o tej samej nazwie (z różnicą spacji/wielkości liter) i tym samym typie — wszystkie zakończone */
+      { id: "s1", name: "Etyka zawodowa", type: "w", date: "2026-10-10", s: "10:00", e: "11:30", room: "", person: "dr E" },
+      { id: "s2", name: "Etyka  zawodowa ", type: "w", date: "2026-10-24", s: "10:00", e: "11:30", room: "", person: "dr E" },
+      { id: "s3", name: "etyka zawodowa", type: "w", date: "2026-11-07", s: "10:00", e: "11:30", room: "", person: "dr F" },
+      /* Dwa jednorazowe o tej samej nazwie, ale RÓŻNYCH typach (po 1 z każdego typu) — oba zakończone */
+      { id: "d1", name: "Warsztaty jesienne", type: "w", date: "2026-10-12", s: "12:00", e: "13:00", room: "", person: "" },
+      { id: "d2", name: "Warsztaty jesienne", type: "l", date: "2026-10-13", s: "12:00", e: "13:00", room: "", person: "" },
+    ],
+    subjects: [
+      /* Nawet jeśli pojedyncze jednorazowe miało wpis w plan.subjects, po odbyciu znika z listy */
+      { id: "sub-o1", name: "Przysposobienie biblioteczne", desc: "notatka", req: "", forms: {}, mac: "" },
+    ],
+    tasks: [
+      /* Nawet z otwartym zadaniem pojedyncze odbyte zajęcia jednorazowe znikają z listy przedmiotów */
+      { id: "t1", sid: "sub-o1", cid: "", at: 1, date: "", text: "Oddaj kartę", due: "2026-11-30", time: "", url: "", note: "", done: false },
+    ],
+  };
+
+  /* Przed odbyciem o1 (2026-10-23 12:00 — w trakcie) */
+  const duringO1 = new Date(2026, 9, 23, 12, 0);
+  assert.equal(oneOffEnded(plan.classes[1], duringO1), false);
+  const beforeList = subjectsOf(plan, duringO1);
+  assert.ok(beforeList.some((s) => s.name === "Przysposobienie biblioteczne"));
+
+  /* Po odbyciu o1, s1-s3 i d1-d2 (2026-11-22 14:00) */
+  const after = new Date(2026, 10, 22, 14, 0);
+  assert.equal(oneOffEnded(plan.classes[1], after), true);
+  const afterList = subjectsOf(plan, after);
+  const names = afterList.map((s) => s.name);
+
+  assert.equal(names.includes("Przysposobienie biblioteczne"), false);
+  assert.equal(names.includes("Warsztaty jesienne"), false);
+  assert.equal(names.includes("Matematyka I"), true);
+  assert.equal(names.includes("Wykład otwarty"), true);
+
+  /* Seria 3 jednorazowych „Etyka zawodowa” (ten sam typ w) wyświetla się jako JEDEN przedmiot i nie znika po zakończeniu */
+  const etykaEntries = afterList.filter((s) => s.name.toLowerCase() === "etyka zawodowa");
+  assert.equal(etykaEntries.length, 1);
+  assert.deepEqual(etykaEntries[0].types, ["w"]);
+  assert.deepEqual(etykaEntries[0].persons, ["dr E", "dr F"]);
 });
 
 

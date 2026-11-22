@@ -21,6 +21,8 @@ import {
   tasksForClass,
   classForTask,
   nextOccurrenceBySubject,
+  normSubjName,
+  subjectsOf,
 } from "../core.js";
 import { cache } from "../sync.js";
 import { $, esc, reduced, dlong, hm, fmtLocal, nameLc, selOpts, ui, app } from "../state.js";
@@ -167,10 +169,10 @@ function taskFilterSubjects() {
   const map = new Map();
   for (const t of cache.plan.tasks) {
     const lbl = taskLabelOf(t);
-    if (lbl) map.set(nameLc(lbl), lbl);
+    if (lbl) map.set(normSubjName(lbl), lbl.trim());
   }
-  for (const c of cache.plan.classes) {
-    if (c.name) map.set(nameLc(c.name), c.name);
+  for (const e of subjectsOf(cache.plan, ui.now)) {
+    if (e.name) map.set(normSubjName(e.name), e.name);
   }
   const arr = [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "pl"));
   return [["", "Wszystkie przedmioty"]].concat(arr);
@@ -242,7 +244,7 @@ export function renderTasks() {
   const q = nameLc(ui.tkQuery.trim());
   const filtered = all.filter((t) => {
     if (ui.hideDone && isTaskDone(t, ui.now, cache.plan)) return false;
-    if (ui.tkSubj && nameLc(taskLabelOf(t)) !== ui.tkSubj) return false;
+    if (ui.tkSubj && normSubjName(taskLabelOf(t)) !== ui.tkSubj) return false;
     if (ui.tkCat) {
       if (ui.tkCat === "exam") {
         if (taskCat(t) === "session" || !isExamTask(t)) return false;
@@ -510,13 +512,29 @@ export function setRem(x, rem) {
 
 /* ----- Wspólny formularz zadania (zakładka Zadania, szczegóły zajęć, edycja) ----- */
 export function subjPairs() {
-  const s = cache.plan.subjects;
-  const have = new Set(s.map((x) => x.name.toLowerCase()));
-  const out = s.map((x) => [x.id, x.name]);
-  for (const n of new Set(cache.plan.classes.map((c) => c.name))) {
-    if (!have.has(n.toLowerCase())) {
-      have.add(n.toLowerCase());
-      out.push(["n:" + n, n]);
+  const list = subjectsOf(cache.plan, ui.now);
+  const byKey = new Map();
+  for (const s of cache.plan.subjects) {
+    const k = normSubjName(s.name);
+    if (k && !byKey.has(k)) byKey.set(k, s);
+  }
+  const have = new Set();
+  const out = [];
+  for (const e of list) {
+    const k = normSubjName(e.name);
+    if (!k || have.has(k)) continue;
+    have.add(k);
+    const rec = byKey.get(k);
+    out.push([rec ? rec.id : "n:" + e.name, rec ? rec.name : e.name]);
+  }
+  for (const t of cache.plan.tasks) {
+    if (!t.sid) continue;
+    const rec = cache.plan.subjects.find((x) => x.id === t.sid);
+    if (!rec) continue;
+    const k = normSubjName(rec.name);
+    if (k && !have.has(k)) {
+      have.add(k);
+      out.push([rec.id, rec.name]);
     }
   }
   out.sort((a, b) => a[1].localeCompare(b[1], "pl"));
@@ -525,11 +543,11 @@ export function subjPairs() {
 
 export function subjValueForName(name) {
   if (!name) return "";
-  const lc = name.trim().toLowerCase();
-  const s = cache.plan.subjects.find((x) => x.name.trim().toLowerCase() === lc);
+  const lc = normSubjName(name);
+  const s = cache.plan.subjects.find((x) => normSubjName(x.name) === lc);
   if (s) return s.id;
-  const c = cache.plan.classes.find((x) => x.name.trim().toLowerCase() === lc);
-  return c ? "n:" + c.name : "";
+  const c = cache.plan.classes.find((x) => normSubjName(x.name) === lc);
+  return c ? "n:" + c.name.trim().replace(/\s+/g, " ") : "";
 }
 
 export function subjNameFromVal(val) {
@@ -542,8 +560,8 @@ export function subjNameFromVal(val) {
 export function applySubject(p, val) {
   if (!val) return "";
   if (val.startsWith("n:")) {
-    const n = val.slice(2);
-    let s = p.subjects.find((x) => x.name.toLowerCase() === n.toLowerCase());
+    const n = val.slice(2).trim().replace(/\s+/g, " ");
+    let s = p.subjects.find((x) => normSubjName(x.name) === normSubjName(n));
     if (!s) {
       s = { id: uid(), name: n, desc: "", req: "", forms: {}, mac: "" };
       p.subjects.push(s);

@@ -189,6 +189,7 @@ try {
     let hoverPreviewShown = false;
     let hoverPreviewTime = "";
     let gridClickForm = null;
+    let bottomClampTime = "";
     if (col3) {
       const r = col3.getBoundingClientRect();
       const targetX = r.left + r.width / 2;
@@ -213,9 +214,108 @@ try {
       }
       document.querySelector("[data-sh=close]").click();
       await new Promise(r => setTimeout(r, 100));
+
+      // Kliknięcie przy samej krawędzi (19:45) -> minimalna długość 30 min: 19:30–20:00 (nie wychodzi poza siatkę)
+      const r2 = col3.getBoundingClientRect();
+      col3.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: r2.left + r2.width / 2, clientY: r2.top + 52 * 11.75 + 2, pointerType: "mouse" }));
+      const prevBot = col3.querySelector(".wb-drop.wb-add");
+      bottomClampTime = prevBot ? (prevBot.querySelector("b") || {}).textContent || "" : "";
     }
 
-    document.getElementById("ed").click();
+    // 1d. Rozszerzanie siatki przez resize + drag & click na rozszerzonej siatce (bez rozszerzania dragiem) + Przedmioty jednorazowe
+    const extPlan = {
+      v: 1,
+      rev: 1,
+      start: "2026-10-05",
+      startWeek: "B",
+      classes: [
+        { id: "e1", name: "Poranne zajęcia", type: "l", wd: 0, weeks: "all", s: "07:00", e: "08:30", room: "A1", person: "" },
+        { id: "e2", name: "Wieczorne zajęcia", type: "w", wd: 0, weeks: "all", s: "19:00", e: "20:00", room: "A2", person: "" },
+        { id: "o1", name: "Pojedyncze minione", type: "x", date: "2020-01-10", s: "10:00", e: "11:00", room: "", person: "" },
+        { id: "s1", name: "Seria jednorazowa", type: "w", date: "2020-01-10", s: "12:00", e: "13:30", room: "", person: "dr X" },
+        { id: "s2", name: "Seria jednorazowa", type: "w", date: "2020-01-17", s: "12:00", e: "13:30", room: "", person: "dr X" },
+      ],
+      exceptions: [],
+      subjects: [],
+      tasks: [],
+    };
+    {
+      const dt2 = new DataTransfer();
+      dt2.items.add(new File([JSON.stringify(extPlan)], "ext.json", { type: "application/json" }));
+      const inp2 = document.getElementById("devImpf");
+      inp2.files = dt2.files;
+      inp2.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise(r => setTimeout(r, 160));
+    }
+
+    // Resize e2 (19:00-20:00) w dół do 21:30 -> siatka rozszerza się na żywo do 22:00 (hi=1320)
+    const wbE2 = document.querySelector("#list .wb[data-cid='e2']");
+    const rzE2 = wbE2 && wbE2.querySelector(".wb-rz");
+    let resizeExpandedHi = 0;
+    let resizeNewTime = "";
+    if (wbE2 && rzE2) {
+      const col0 = wbE2.closest(".wg-c[data-date]");
+      const cr = col0.getBoundingClientRect();
+      const rr = rzE2.getBoundingClientRect();
+      const x = rr.left + rr.width / 2;
+      const y0 = rr.top + rr.height / 2;
+      const yTo2130 = cr.top + ((21.5 - 7) * 52); // lo=7:00 -> 21:30 = 14.5h od 7:00
+      rzE2.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, button: 0, isPrimary: true, pointerType: "mouse", clientX: x, clientY: y0 }));
+      document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 2, isPrimary: true, pointerType: "mouse", clientX: x, clientY: yTo2130 }));
+      resizeExpandedHi = +col0.dataset.hi;
+      resizeNewTime = (wbE2.querySelector(".wb-top b") || {}).textContent || "";
+      document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 2, isPrimary: true, pointerType: "mouse", clientX: x, clientY: yTo2130 }));
+      await new Promise(r => setTimeout(r, 120));
+      const permBtn = document.getElementById("drgPerm");
+      if (permBtn) {
+        permBtn.click();
+        await new Promise(r => setTimeout(r, 150));
+      }
+    }
+
+    // Teraz siatka ma lo=420 (7:00), hi=1320 (22:00). Sprawdź drag do 20:30–22:00 oraz blokadę wyjścia poza 22:00
+    const wbE1 = document.querySelector("#list .wb[data-cid='e1']");
+    let extDragClampedTime = "";
+    let extDragHiUnchanged = false;
+    let extClickTime = "";
+    let extClickBottomTime = "";
+    if (wbE1) {
+      const col1 = document.querySelectorAll("#list .wg-c[data-date]")[1];
+      const cr1 = col1.getBoundingClientRect();
+      const br = wbE1.getBoundingClientRect();
+      const sx = br.left + br.width / 2;
+      const sy = br.top + 10;
+      const dropBelow22 = cr1.top + ((23 - 7) * 52); // poniżej 22:00 -> powinno zatrzymać się na 20:30–22:00 bez rozszerzania siatki
+      wbE1.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 3, button: 0, isPrimary: true, pointerType: "mouse", clientX: sx, clientY: sy }));
+      document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 3, isPrimary: true, pointerType: "mouse", clientX: cr1.left + cr1.width / 2, clientY: dropBelow22 }));
+      const dropEl = col1.querySelector(".wb-drop:not(.wb-add)");
+      extDragClampedTime = dropEl ? (dropEl.querySelector("b") || {}).textContent || "" : "";
+      extDragHiUnchanged = +col1.dataset.hi === 1320;
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await new Promise(r => setTimeout(r, 120));
+
+      // Kliknięcie na rozszerzonej siatce: 20:30 -> 20:30–22:00, a 21:45 -> 21:30–22:00
+      const col2 = document.querySelectorAll("#list .wg-c[data-date]")[2];
+      const cr2 = col2.getBoundingClientRect();
+      col2.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: cr2.left + cr2.width / 2, clientY: cr2.top + ((20.5 - 7) * 52) + 2, pointerType: "mouse" }));
+      extClickTime = (col2.querySelector(".wb-drop.wb-add b") || {}).textContent || "";
+      col2.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: cr2.left + cr2.width / 2, clientY: cr2.top + ((21.75 - 7) * 52) + 2, pointerType: "mouse" }));
+      extClickBottomTime = (col2.querySelector(".wb-drop.wb-add b") || {}).textContent || "";
+    }
+
+    // Zakładka Przedmioty: brak pojedynczego minionego, a seria 2 jednorazowych widoczna jako 1 wpis
+    document.getElementById("nv-subj").click();
+    await new Promise(r => setTimeout(r, 120));
+    const sbNames = [...document.querySelectorAll("#sbList .sbi .nm")].map(el => el.textContent);
+    const subjSingleGone = !sbNames.includes("Pojedyncze minione");
+    const subjSeriesCount = sbNames.filter(n => n === "Seria jednorazowa").length;
+
+    document.querySelector("[data-a='devexit:']").click();
+    await new Promise(r => setTimeout(r, 120));
+    document.getElementById("nv-plan").click();
+    await new Promise(r => setTimeout(r, 120));
+    if (document.body.classList.contains("edit")) document.getElementById("ed").click();
+
     return {
       hasGrid,
       hasExBtn,
@@ -233,6 +333,15 @@ try {
       hoverPreviewShown,
       hoverPreviewTime,
       gridClickForm,
+      bottomClampTime,
+      resizeExpandedHi,
+      resizeNewTime,
+      extDragClampedTime,
+      extDragHiUnchanged,
+      extClickTime,
+      extClickBottomTime,
+      subjSingleGone,
+      subjSeriesCount,
     };
   })()`);
 
@@ -396,6 +505,15 @@ try {
     desk.gridClickForm.date !== desk.gridClickForm.expectedDate ||
     desk.gridClickForm.s !== "10:00" ||
     desk.gridClickForm.e !== "11:30" ||
+    desk.bottomClampTime !== "19:30–20:00" ||
+    desk.resizeExpandedHi !== 1320 ||
+    desk.resizeNewTime !== "19:00–21:30" ||
+    desk.extDragClampedTime !== "20:30–22:00" ||
+    !desk.extDragHiUnchanged ||
+    desk.extClickTime !== "20:30–22:00" ||
+    desk.extClickBottomTime !== "21:30–22:00" ||
+    !desk.subjSingleGone ||
+    desk.subjSeriesCount !== 1 ||
     mob.calBtns < 7 ||
     !mob.mobSet.hasSemPreview ||
     !mob.mobSet.hasArchTasksBtn ||
