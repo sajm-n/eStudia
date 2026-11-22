@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795383669109,
+  "rev": 1795385437641,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -557,6 +557,19 @@
       "note": "zadania z list\nod początku do indukcji matematycznej",
       "done": false,
       "cat": "exam"
+    },
+    {
+      "id": "kmwse4ts8kfq1r",
+      "text": "Ogarnij plik?",
+      "sid": "kmva1lwmucyjj8",
+      "cid": "",
+      "date": "",
+      "due": "2026-11-23",
+      "time": "",
+      "url": "https://pollubpl.sharepoint.com/:b:/s/IINFORMATYKATECHNICZNAJZYKANGIELSKI/IQCylr0GEnW6SaezYEELgt4GAb7Oaj3w2LJK6qxkpzh4e6w?e=bYhYbx",
+      "at": 1795385437640,
+      "note": "",
+      "done": false
     }
   ],
   "notif": {
