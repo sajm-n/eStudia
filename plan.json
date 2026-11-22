@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795385597508,
+  "rev": 1795385628074,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -167,18 +167,6 @@
       "e": "13:00",
       "room": "s. 11, WM",
       "person": ""
-    },
-    {
-      "id": "kmwse894zkq4eo",
-      "name": "Andrzejki Politechniki Lubelskiej",
-      "type": "l",
-      "wd": 3,
-      "weeks": "all",
-      "s": "21:00",
-      "e": "23:59",
-      "room": "",
-      "person": "",
-      "manual": true
     }
   ],
   "exceptions": [
