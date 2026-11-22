@@ -230,7 +230,20 @@ export function openForm(o) {
   let title;
   let eid = null;
   if (o.mode === "new") {
-    v = { name: "", type: "l", rec: "all", wd: wd(ui.sel), date: dk(ui.sel), s: "08:00", e: "09:30", room: "", person: "" };
+    const dObj = o.date ? fromDK(o.date) : null;
+    const defWd = typeof o.wd === "number" ? o.wd : dObj ? wd(dObj) : wd(ui.sel);
+    const defDate = o.date && dObj ? o.date : dk(ui.sel);
+    v = {
+      name: "",
+      type: "l",
+      rec: o.rec || "all",
+      wd: defWd,
+      date: defDate,
+      s: o.s || "08:00",
+      e: o.e || "09:30",
+      room: "",
+      person: "",
+    };
     title = "Nowe zajęcia";
   } else {
     const c = cache.plan.classes.find((x) => x.id === o.cid);

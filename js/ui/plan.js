@@ -331,7 +331,6 @@ function card(it, cls, badge) {
     '"' +
     act +
     '>' +
-    (ui.editMode && !it.off ? '<div class="c-drag" aria-hidden="true" title="Przytrzymaj uchwyt, aby przesunąć"><i></i></div>' : "") +
     '<div class="tm" style="background:' +
     esc(bgCol) +
     ";color:" +

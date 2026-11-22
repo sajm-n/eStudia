@@ -1,4 +1,4 @@
-/* ===== Drag & Drop: Desktop (siatka tygodnia + resize 8-20 + zmiana tygodnia) i Mobile (long-press na górnym uchwycie + pełny kafelek + kalendarz/krawędzie) ===== */
+/* ===== Drag & Drop + klikanie w siatkę: Desktop (drag/resize 8-20, zmiana tygodnia, podgląd i dodawanie kliknięciem) i Mobile (long-press na kafelku + kalendarz/krawędzie) ===== */
 
 import { DOW, DOWS } from "../config.js";
 import { pad, wd, dk, fromDK, fmtT, uid, itemsFor, tasksForClass, isTaskDone } from "../core.js";
@@ -9,11 +9,13 @@ import { shiftWeek } from "./plan.js";
 
 const WG_H = 52;
 const SNAP = 15; // skok w minutach
+const ADD_DUR = 90; // domyślny czas trwania nowych zajęć po kliknięciu w siatkę (min)
 const MIN_M = 480; // 08:00
 const MAX_M = 1200; // 20:00
 const HOVER_DELAY = 550; // ms najechania na strzałkę tygodnia
 const EDGE_DELAY = 600; // ms przy krawędzi ekranu na telefonie
-const HANDLE_LP_MS = 185; // ~2/3 z pierwotnych 280 ms na górnym uchwycie
+const CARD_LP_MS = 260; // czas przytrzymania (long-press) bezpośrednio na kafelku zajęć
+const ARM_DELAY_MS = 70; // opóźnienie podświetlenia kafelka (żeby zwykłe stuknięcie nie mrugało)
 const EDGE_PX = 38; // szerokość strefy krawędzi ekranu (px)
 
 const toTime = (m) => pad(Math.floor(m / 60)) + ":" + pad(m % 60);
@@ -220,7 +222,10 @@ function cleanup() {
     clearTimeout(active.lpTimer);
     active.lpTimer = 0;
   }
-  if (active.handleEl) active.handleEl.classList.remove("arming");
+  if (active.armTimer) {
+    clearTimeout(active.armTimer);
+    active.armTimer = 0;
+  }
   clearHoverNav();
   clearEdgeNav();
   clearCalDayHover();
@@ -229,7 +234,7 @@ function cleanup() {
   if (active.ghost) active.ghost.remove();
   if (active.dropEl) active.dropEl.remove();
   if (active.hintEl) active.hintEl.remove();
-  if (active.srcEl) active.srcEl.classList.remove("drag-src", "drag-resizing");
+  if (active.srcEl) active.srcEl.classList.remove("arming", "drag-src", "drag-resizing");
   document.body.classList.remove("dragging", "resizing", "mob-dragging");
   active = null;
 }
@@ -239,6 +244,47 @@ function createDropEl() {
   el.className = "wb-drop";
   el.innerHTML = "<b></b><span></span>";
   return el;
+}
+
+/* ----- Desktop: podgląd miejsca dodania zajęć pod kursorem na siatce tygodnia ----- */
+let addPreviewEl = null;
+
+function hideAddPreview() {
+  if (addPreviewEl && addPreviewEl.parentElement) addPreviewEl.remove();
+}
+
+function calcAddSlot(col, clientY) {
+  const r = col.getBoundingClientRect();
+  const lo = +col.dataset.lo;
+  const hi = +col.dataset.hi;
+  const dur = Math.min(ADD_DUR, Math.max(30, hi - lo));
+  const relY = clientY - r.top;
+  const rawS = lo + (relY / WG_H) * 60;
+  const sMin = Math.max(lo, Math.min(hi - dur, Math.floor(rawS / SNAP) * SNAP));
+  const eMin = sMin + dur;
+  return {
+    date: col.dataset.date,
+    sMin,
+    eMin,
+    s: toTime(sMin),
+    e: toTime(eMin),
+    top: ((sMin - lo) / 60) * WG_H + 1,
+    height: Math.max(22, ((eMin - sMin) / 60) * WG_H - 3),
+  };
+}
+
+function updateAddPreview(col, clientY) {
+  const slot = calcAddSlot(col, clientY);
+  if (!addPreviewEl) {
+    addPreviewEl = createDropEl();
+    addPreviewEl.classList.add("wb-add");
+  }
+  if (addPreviewEl.parentElement !== col) col.appendChild(addPreviewEl);
+  addPreviewEl.style.top = slot.top + "px";
+  addPreviewEl.style.height = slot.height + "px";
+  addPreviewEl.style.display = "";
+  addPreviewEl.querySelector("b").textContent = fmtT(slot.s) + "–" + fmtT(slot.e);
+  addPreviewEl.querySelector("span").textContent = "+ Nowe zajęcia";
 }
 
 /* ----- Desktop: ruch i zmiana rozmiaru na siatce tygodnia (ściśle w zakresie 8:00–20:00) ----- */
@@ -346,7 +392,11 @@ function startMobileDrag(clientX, clientY) {
     clearTimeout(active.lpTimer);
     active.lpTimer = 0;
   }
-  if (active.handleEl) active.handleEl.classList.remove("arming");
+  if (active.armTimer) {
+    clearTimeout(active.armTimer);
+    active.armTimer = 0;
+  }
+  if (active.srcEl) active.srcEl.classList.remove("arming");
   try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
 
   document.body.classList.add("dragging", "mob-dragging");
@@ -356,7 +406,7 @@ function startMobileDrag(clientX, clientY) {
   const rect = active.srcEl.getBoundingClientRect();
   active.cardW = rect.width;
   active.cardLeft = rect.left;
-  active.cardOffY = Math.min(28, Math.max(10, clientY - rect.top));
+  active.cardOffY = Math.min(rect.height - 12, Math.max(12, clientY - rect.top));
 
   /* Klonujemy cały kafelek zajęć, żeby przesuwał się naturalnie jak na desktopie */
   const ghost = document.createElement("div");
@@ -556,7 +606,56 @@ export function initDrag() {
   const list = $("list");
   if (!list) return;
 
+  /* Desktop: podgląd potencjalnego miejsca dodania zajęć pod kursorem w trybie edycji */
+  list.addEventListener("pointermove", (e) => {
+    if (!isDesk() || !ui.editMode || ui.shOpen || ui.mcalOpen || active || e.pointerType === "touch") {
+      hideAddPreview();
+      return;
+    }
+    if (e.target.closest(".wb[data-cid]")) {
+      hideAddPreview();
+      return;
+    }
+    const col = e.target.closest(".wg-c[data-date]");
+    if (!col) {
+      hideAddPreview();
+      return;
+    }
+    updateAddPreview(col, e.clientY);
+  });
+
+  list.addEventListener("pointerleave", hideAddPreview);
+  window.addEventListener("scroll", hideAddPreview, true);
+
+  /* Desktop: kliknięcie w puste miejsce na siatce tygodnia otwiera formularz z ustawionym dniem i godzinami */
+  list.addEventListener("click", (e) => {
+    if (!isDesk() || !ui.editMode || ui.shOpen || ui.mcalOpen || isDragging() || shouldSuppressClick()) return;
+    if (e.target.closest(".wb[data-cid]")) return;
+    const col = e.target.closest(".wg-c[data-date]");
+    if (!col) return;
+    const slot = calcAddSlot(col, e.clientY);
+    const dObj = fromDK(slot.date);
+    hideAddPreview();
+    app.openForm({
+      mode: "new",
+      date: slot.date,
+      wd: dObj ? wd(dObj) : wd(ui.sel),
+      s: slot.s,
+      e: slot.e,
+    });
+  });
+
+  /* Mobile: blokuj systemowe menu kontekstowe przy long-press na kafelku w trybie edycji */
+  list.addEventListener("contextmenu", (e) => {
+    if (!isDesk() && ui.editMode && e.target.closest(".c[data-cid]")) e.preventDefault();
+  });
+
   list.addEventListener("pointerdown", (e) => {
+    hideAddPreview();
+    if (!e.isPrimary) {
+      if (active && active.platform === "mob" && !active.started) cleanup();
+      return;
+    }
     if (!ui.editMode || ui.shOpen || e.button !== 0) return;
 
     /* Desktop: .wb na siatce tygodnia */
@@ -604,18 +703,16 @@ export function initDrag() {
       return;
     }
 
-    /* Mobile: JEDYNIE long-press (~185 ms) na górnym, wyśrodkowanym uchwycie .c-drag */
-    const handle = e.target.closest(".c-drag");
-    if (!handle) return;
-    const card = handle.closest(".c[data-cid]");
+    /* Mobile: long-press (~260 ms) bezpośrednio na kafelku zajęć .c */
+    const card = e.target.closest(".c[data-cid]");
     if (!card || card.classList.contains("offc")) return;
     const base = cache.plan.classes.find((c) => c.id === card.dataset.cid);
     if (!base) return;
 
-    handle.classList.add("arming");
     active = {
       platform: "mob",
       mode: "move",
+      isTouch: e.pointerType === "touch",
       pointerId: e.pointerId,
       cid: card.dataset.cid,
       name: base.name,
@@ -635,8 +732,8 @@ export function initDrag() {
       lastX: e.clientX,
       lastY: e.clientY,
       srcEl: card,
-      handleEl: handle,
       started: false,
+      armTimer: 0,
       lpTimer: 0,
       ghost: null,
       hintEl: null,
@@ -650,9 +747,12 @@ export function initDrag() {
 
     const sx = e.clientX;
     const sy = e.clientY;
+    active.armTimer = setTimeout(() => {
+      if (active && !active.started && active.srcEl) active.srcEl.classList.add("arming");
+    }, ARM_DELAY_MS);
     active.lpTimer = setTimeout(() => {
       if (active && !active.started) startMobileDrag(sx, sy);
-    }, HANDLE_LP_MS);
+    }, CARD_LP_MS);
   });
 
   document.addEventListener(
@@ -666,6 +766,7 @@ export function initDrag() {
         if (!active.started) {
           if (Math.hypot(dx, dy) < 5) return;
           active.started = true;
+          hideAddPreview();
           if (active.mode === "move") {
             document.body.classList.add("dragging");
             active.srcEl.classList.add("drag-src");
@@ -697,21 +798,14 @@ export function initDrag() {
         return;
       }
 
-      /* Mobile: przed upływem 185 ms na uchwycie ruch >12px anuluje (pozwala przewijać) */
+      /* Mobile: przed upływem czasu long-press ruch >10px anuluje (pozwala przewijać i przesuwać dni) */
       if (!active.started) {
-        if (Math.hypot(dx, dy) > 12) cleanup();
+        if (Math.hypot(dx, dy) > 10) cleanup();
         return;
       }
+      if (active.isTouch) return;
       e.preventDefault();
       updateMobileMove(e.clientX, e.clientY);
-    },
-    { passive: false }
-  );
-
-  document.addEventListener(
-    "touchmove",
-    (e) => {
-      if (active && active.started && active.platform === "mob") e.preventDefault();
     },
     { passive: false }
   );
@@ -736,6 +830,33 @@ export function initDrag() {
     commitDrop(snap);
   };
 
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!active || active.platform !== "mob" || !active.isTouch) return;
+      if (e.touches.length !== 1) {
+        finish(true);
+        return;
+      }
+      const t = e.touches[0];
+      if (!active.started) {
+        if (Math.hypot(t.clientX - active.startX, t.clientY - active.startY) > 10) cleanup();
+        return;
+      }
+      if (e.cancelable) e.preventDefault();
+      updateMobileMove(t.clientX, t.clientY);
+    },
+    { passive: false }
+  );
+
+  document.addEventListener("touchend", () => {
+    if (active && active.platform === "mob" && active.isTouch) finish(false);
+  });
+
+  document.addEventListener("touchcancel", () => {
+    if (active && active.platform === "mob" && active.isTouch) finish(true);
+  });
+
   document.addEventListener("pointerup", (e) => {
     if (!active || e.pointerId !== active.pointerId) return;
     finish(false);
@@ -743,6 +864,7 @@ export function initDrag() {
 
   document.addEventListener("pointercancel", (e) => {
     if (!active || e.pointerId !== active.pointerId) return;
+    if (active.platform === "mob" && active.isTouch && active.started) return;
     finish(true);
   });
 

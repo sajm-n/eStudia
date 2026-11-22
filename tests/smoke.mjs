@@ -183,15 +183,84 @@ try {
       document.querySelector("[data-sh=close]").click();
       await new Promise(r => setTimeout(r, 100));
     }
+
+    // 1c. v3.0.0 Desktop: podgląd miejsca dodania pod kursorem i dodanie zajęć kliknięciem w siatkę
+    const col3 = document.querySelectorAll("#list .wg-c[data-date]")[2]; // środa
+    let hoverPreviewShown = false;
+    let hoverPreviewTime = "";
+    let gridClickForm = null;
+    if (col3) {
+      const r = col3.getBoundingClientRect();
+      const targetX = r.left + r.width / 2;
+      const targetY = r.top + 52 * 2 + 4; // 10:00 (lo=8:00, WG_H=52)
+      col3.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: targetX, clientY: targetY, pointerType: "mouse" }));
+      const prev = col3.querySelector(".wb-drop.wb-add");
+      hoverPreviewShown = !!prev;
+      hoverPreviewTime = prev ? (prev.querySelector("b") || {}).textContent || "" : "";
+
+      col3.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: targetX, clientY: targetY, button: 0 }));
+      await new Promise(r => setTimeout(r, 120));
+      const f = document.getElementById("f");
+      if (f) {
+        gridClickForm = {
+          title: document.getElementById("shT").textContent,
+          wd: f.elements.wd.value,
+          date: f.elements.date.value,
+          s: f.elements.s.value,
+          e: f.elements.e.value,
+          expectedDate: col3.dataset.date,
+        };
+      }
+      document.querySelector("[data-sh=close]").click();
+      await new Promise(r => setTimeout(r, 100));
+    }
+
     document.getElementById("ed").click();
-    return { hasGrid, hasExBtn, exTitle, hasSesAdd, hasExDone, hasSubjAdd, hasMorningOpt, hasDevOn, devBarShown, devPlanLoaded, realUntouched, devExited, dayMoveOpens };
+    return {
+      hasGrid,
+      hasExBtn,
+      exTitle,
+      hasSesAdd,
+      hasExDone,
+      hasSubjAdd,
+      hasMorningOpt,
+      hasDevOn,
+      devBarShown,
+      devPlanLoaded,
+      realUntouched,
+      devExited,
+      dayMoveOpens,
+      hoverPreviewShown,
+      hoverPreviewTime,
+      gridClickForm,
+    };
   })()`);
 
-  // 2. Mobile viewport: kalendarz #cal, render planu i logika v2.8.5 (brak duplikatu alertu kolokwium oraz „Do zrobienia” tylko dla zadań)
+  // 2. Mobile viewport: ograniczone Ustawienia (v3.0.0), long-press na kafelku bez kapsułki (v3.0.0) i logika v2.8.5
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await new Promise((r) => setTimeout(r, 250));
   const mob = await evalJs(`(async () => {
     const calBtns = document.querySelectorAll("#cal .cg button").length;
+
+    // 2a. v3.0.0 Mobile Ustawienia: ukryta kopia/import, ukryty tryb dev, sekcja semestr ograniczona do nazwy i archiwizacji zadań
+    document.querySelector("[data-a='set:']").click();
+    await new Promise((r) => setTimeout(r, 120));
+    const mobSet = {
+      hasSemPreview: !!document.querySelector(".sem-cur"),
+      hasArchTasksBtn: !!document.querySelector("[data-sh='archtasks']"),
+      hasSemForm: !!document.getElementById("semF"),
+      hasNewSem: !!document.querySelector("[data-sh='newsem']"),
+      hasViewArch: !!document.querySelector("[data-sh='viewarch']"),
+      hasExport: !!document.querySelector("[data-sh='export']"),
+      hasImport: !!document.querySelector("[data-sh='import']"),
+      hasReset: !!document.querySelector("[data-sh='reset']"),
+      hasDevOn: !!document.querySelector("[data-sh='devon']"),
+      hasDevLoad: !!document.querySelector("[data-sh='devload']"),
+      versionOk: (document.getElementById("shBody").textContent || "").includes("3.0.0"),
+    };
+    document.querySelector("[data-sh=close]").click();
+    await new Promise((r) => setTimeout(r, 120));
+
     const now = new Date();
     const tmr = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
     const pad = (n) => String(n).padStart(2, "0");
@@ -220,14 +289,6 @@ try {
       }
     };
 
-    // Włącz tryb dev, żeby nie modyfikować prawdziwego planu
-    document.querySelector("[data-a='set:']").click();
-    await new Promise((r) => setTimeout(r, 120));
-    document.querySelector("[data-sh='devon']").click();
-    await new Promise((r) => setTimeout(r, 120));
-    document.querySelector("[data-sh=close]").click();
-    await new Promise((r) => setTimeout(r, 100));
-
     // Scenariusz A: samo kolokwium z aktywnym alertem -> górny alert widoczny, dolna pigułka ukryta, karta bez „Do zrobienia”
     await loadDev({
       v: 1,
@@ -247,6 +308,32 @@ try {
     const aheadExamHiddenWhenAlert = !document.querySelector("#ahead .ah.exam");
     const cardOnlyExamHasExam = !!document.querySelector("#list .c .ev.exam");
     const cardOnlyExamNoTodo = !document.querySelector("#list .c .ev.tk");
+
+    // 2b. v3.0.0 Mobile Drag & Drop: brak kapsułki .c-drag, long-press bezpośrednio na kafelku .c
+    document.getElementById("ed").click();
+    await new Promise((r) => setTimeout(r, 120));
+    const hasCapsuleHandle = !!document.querySelector("#list .c-drag");
+    const card = document.querySelector("#list .c[data-cid='c1']");
+    let mobLongPressDragStarted = false;
+    let mobLongPressDropOpened = false;
+    if (card) {
+      const cr = card.getBoundingClientRect();
+      const cx = cr.left + cr.width / 2;
+      const cy = cr.top + cr.height / 2;
+      card.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, pointerType: "mouse", clientX: cx, clientY: cy }));
+      await new Promise((r) => setTimeout(r, 320));
+      mobLongPressDragStarted = document.body.classList.contains("mob-dragging") && !!document.querySelector(".drag-card-ghost");
+      document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, isPrimary: true, pointerType: "mouse", clientX: cx, clientY: cy + 48 }));
+      document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, isPrimary: true, pointerType: "mouse", clientX: cx, clientY: cy + 48 }));
+      await new Promise((r) => setTimeout(r, 120));
+      mobLongPressDropOpened = !!document.getElementById("drgOnce");
+      if (document.querySelector("[data-sh=close]")) {
+        document.querySelector("[data-sh=close]").click();
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+    document.getElementById("ed").click();
+    await new Promise((r) => setTimeout(r, 100));
 
     // Scenariusz B: kolokwium (bez aktywnego alertu) + sprawozdanie -> dolna pigułka widoczna, karta ma „Kolokwium” i „Do zrobienia: 1”
     await loadDev({
@@ -272,6 +359,10 @@ try {
 
     return {
       calBtns,
+      mobSet,
+      hasCapsuleHandle,
+      mobLongPressDragStarted,
+      mobLongPressDropOpened,
       alertExamShown,
       aheadExamHiddenWhenAlert,
       cardOnlyExamHasExam,
@@ -297,7 +388,29 @@ try {
     !desk.realUntouched ||
     !desk.devExited ||
     !desk.dayMoveOpens ||
+    !desk.hoverPreviewShown ||
+    desk.hoverPreviewTime !== "10:00–11:30" ||
+    !desk.gridClickForm ||
+    desk.gridClickForm.title !== "Nowe zajęcia" ||
+    desk.gridClickForm.wd !== "2" ||
+    desk.gridClickForm.date !== desk.gridClickForm.expectedDate ||
+    desk.gridClickForm.s !== "10:00" ||
+    desk.gridClickForm.e !== "11:30" ||
     mob.calBtns < 7 ||
+    !mob.mobSet.hasSemPreview ||
+    !mob.mobSet.hasArchTasksBtn ||
+    mob.mobSet.hasSemForm ||
+    mob.mobSet.hasNewSem ||
+    mob.mobSet.hasViewArch ||
+    mob.mobSet.hasExport ||
+    mob.mobSet.hasImport ||
+    mob.mobSet.hasReset ||
+    mob.mobSet.hasDevOn ||
+    mob.mobSet.hasDevLoad ||
+    !mob.mobSet.versionOk ||
+    mob.hasCapsuleHandle ||
+    !mob.mobLongPressDragStarted ||
+    !mob.mobLongPressDropOpened ||
     !mob.alertExamShown ||
     !mob.aheadExamHiddenWhenAlert ||
     !mob.cardOnlyExamHasExam ||

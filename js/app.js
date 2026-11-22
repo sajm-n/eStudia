@@ -576,7 +576,7 @@ document.addEventListener("click", (e) => {
   lst.addEventListener("touchend", (e) => {
     if (!lon) return;
     lon = false;
-    if (isDesk() || ui.shOpen || isDragging()) return;
+    if (isDesk() || ui.shOpen || isDragging() || shouldSuppressClick()) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - lx0;
     const dy = t.clientY - ly0;
@@ -605,6 +605,7 @@ hooks.conflict = () => {
   const onLayout = () => {
     ui.lastFill = {};
     render();
+    if (ui.shOpen && ui.ctx && ui.ctx.view === "settings") openSettings();
   };
   if (mqD.addEventListener) mqD.addEventListener("change", onLayout);
   else if (mqD.addListener) mqD.addListener(onLayout);

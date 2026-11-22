@@ -4,7 +4,7 @@ import { APP_VERSION, WD_IN, DOWS } from "../config.js";
 import { pad, day0, wd, dk, fromDK, normT, fmtT, mondayOf, validatePlan, mergeSchedule, typeLabel, ruleStart, uid, clone, isTaskDone } from "../core.js";
 import { cfg, cache, sync, conflict, isDevMode, saveCfg, resetSyncTarget, commit, syncAll, testToken } from "../sync.js";
 import { ensurePush, renderNotifState, renderPushDiag } from "../push.js";
-import { $, esc, dl, hm, selOpts, setMsg, ui } from "../state.js";
+import { $, esc, isDesk, dl, hm, selOpts, setMsg, ui } from "../state.js";
 import { openSheet, closeSheet, toast, ask, change } from "./sheet.js";
 import { fmtDur, taskLabelOf, catChip, taskMeta } from "./tasks.js";
 
@@ -158,6 +158,78 @@ export function dfRender() {
 export function openSettings() {
   const c = cfg;
   const p = cache.plan;
+  const desk = isDesk();
+  const doneN = p.tasks.filter((t) => isTaskDone(t, ui.now, p)).length;
+  const semSection = desk
+    ? '<h3 class="sec">Semestr i archiwum</h3>' +
+      '<form id="semF" novalidate autocomplete="off">' +
+      '<label class="fl">Nazwa bieżącego semestru<input name="sem" maxlength="60" value="' +
+      esc(p.semester || "") +
+      '" placeholder="np. Semestr 1 (2026/27)"></label>' +
+      '<p id="semMsg" class="msg" role="status"></p>' +
+      '<div class="acts"><button type="submit" class="btn">Zapisz nazwę</button><button type="button" class="btn" data-sh="newsem">Zakończ semestr i zacznij nowy</button></div></form>' +
+      (() => {
+        const archN = Array.isArray(p.archivedTasks) ? p.archivedTasks.length : 0;
+        const sems = Array.isArray(p.semesters) ? p.semesters : [];
+        const semRows = sems.length
+          ? '<p class="hint" style="margin-top:10px">Zapisane semestry (przełączenie zachowuje obecny semestr w archiwum):</p><div class="sem-list">' +
+            sems
+              .map(
+                (s) =>
+                  '<div class="sem-row"><div class="sem-info"><b>' +
+                  esc(s.name) +
+                  "</b><span>" +
+                  s.plan.classes.length +
+                  " zajęć · " +
+                  s.plan.tasks.length +
+                  ' zadań</span></div><div class="sem-acts"><button type="button" class="btn" data-sh="semsw:' +
+                  esc(s.id) +
+                  '">Przełącz</button><button type="button" class="btn dng" data-sh="semdel:' +
+                  esc(s.id) +
+                  '">Usuń</button></div></div>'
+              )
+              .join("") +
+            "</div>"
+          : "";
+        return (
+          '<div class="acts" style="margin-top:10px">' +
+          (doneN
+            ? '<button type="button" class="btn" data-sh="archtasks">Zarchiwizuj ukończone zadania (' + doneN + ")</button>"
+            : "") +
+          (archN
+            ? '<button type="button" class="btn" data-sh="viewarch">Pokaż archiwum zadań (' + archN + ")</button>"
+            : "") +
+          "</div>" +
+          semRows
+        );
+      })()
+    : '<h3 class="sec">Semestr i archiwum</h3>' +
+      '<div class="sem-cur"><span>Bieżący semestr</span><b>' +
+      esc(p.semester || "Nie ustawiono") +
+      "</b></div>" +
+      '<div class="acts" style="margin-top:10px">' +
+      '<button type="button" class="btn" data-sh="archtasks"' +
+      (doneN ? "" : " disabled") +
+      ">Zarchiwizuj ukończone zadania (" +
+      doneN +
+      ")</button></div>";
+
+  const desktopOnlySections = desk
+    ? '<h3 class="sec">Kopia zapasowa i import</h3>' +
+      '<p class="hint">Import pliku JSON pozwala zaktualizować wyłącznie plan zajęć (np. nowy plik z eStudiaTools po zmianie sal — bez utraty zadań, notatek i nieobecności) albo zastąpić całą bazę z kopii zapasowej.</p>' +
+      '<div class="acts"><button type="button" class="btn" data-sh="export">Eksportuj plan</button><button type="button" class="btn" data-sh="import">Importuj plan</button><button type="button" class="btn dng" data-sh="reset">Przywróć plan domyślny</button></div>' +
+      '<input type="file" id="impf" accept=".json,application/json" hidden>' +
+      '<p id="bkMsg" class="msg" role="status" style="margin-top:8px"></p>' +
+      '<h3 class="sec">Tryb deweloperski (playground)</h3>' +
+      '<p class="hint">Odizolowane środowisko testowe. Wczytane pliki i wprowadzone zmiany zapisują się osobno i nigdy nie trafiają na GitHub. W każdej chwili wrócisz do swojego normalnego planu.</p>' +
+      (isDevMode()
+        ? '<p class="msg warn" role="status">Tryb deweloperski jest AKTYWNY — pracujesz na odizolowanej kopii testowej.</p>' +
+          '<div class="acts"><button type="button" class="btn" data-sh="devload">Wczytaj inny plik testowy (.json)</button><button type="button" class="btn" data-sh="devexport">Eksportuj plan testowy</button><button type="button" class="btn pri" data-sh="devexit">Wyłącz i wróć do normalnego planu</button></div>'
+        : '<div class="acts"><button type="button" class="btn" data-sh="devon">Włącz tryb deweloperski</button><button type="button" class="btn" data-sh="devload">Wczytaj plan testowy z pliku (.json)</button></div>') +
+      '<p id="devMsg" class="msg" role="status" style="margin-top:8px"></p>'
+    : "";
+
+  ui.ctx = { view: "settings" };
   openSheet(
     "Ustawienia",
     '<p class="shsub" id="cfgStat" role="status"></p>' +
@@ -200,61 +272,8 @@ export function openSettings() {
       '<p class="hint">Nowe zadanie dostaje taki termin powiadomienia, dopóki w jego formularzu nie wybierzesz innego (przycisk „Domyślne”). Zmiana obejmuje też istniejące zadania bez własnego terminu.</p>' +
       '<form id="dfF" novalidate autocomplete="off"><div id="dfBox"></div><p id="dfMsg" class="msg" role="status"></p>' +
       '<div class="acts"><button type="button" class="btn" data-sh="dfreset">Przywróć wartości startowe</button></div></form>' +
-      '<h3 class="sec">Semestr i archiwum</h3>' +
-      '<form id="semF" novalidate autocomplete="off">' +
-      '<label class="fl">Nazwa bieżącego semestru<input name="sem" maxlength="60" value="' +
-      esc(p.semester || "") +
-      '" placeholder="np. Semestr 1 (2026/27)"></label>' +
-      '<p id="semMsg" class="msg" role="status"></p>' +
-      '<div class="acts"><button type="submit" class="btn">Zapisz nazwę</button><button type="button" class="btn" data-sh="newsem">Zakończ semestr i zacznij nowy</button></div></form>' +
-      (() => {
-        const doneN = p.tasks.filter((t) => isTaskDone(t, ui.now, p)).length;
-        const archN = Array.isArray(p.archivedTasks) ? p.archivedTasks.length : 0;
-        const sems = Array.isArray(p.semesters) ? p.semesters : [];
-        const semRows = sems.length
-          ? '<p class="hint" style="margin-top:10px">Zapisane semestry (przełączenie zachowuje obecny semestr w archiwum):</p><div class="sem-list">' +
-            sems
-              .map(
-                (s) =>
-                  '<div class="sem-row"><div class="sem-info"><b>' +
-                  esc(s.name) +
-                  "</b><span>" +
-                  s.plan.classes.length +
-                  " zajęć · " +
-                  s.plan.tasks.length +
-                  ' zadań</span></div><div class="sem-acts"><button type="button" class="btn" data-sh="semsw:' +
-                  esc(s.id) +
-                  '">Przełącz</button><button type="button" class="btn dng" data-sh="semdel:' +
-                  esc(s.id) +
-                  '">Usuń</button></div></div>'
-              )
-              .join("") +
-            "</div>"
-          : "";
-        return (
-          '<div class="acts" style="margin-top:10px">' +
-          (doneN
-            ? '<button type="button" class="btn" data-sh="archtasks">Zarchiwizuj ukończone zadania (' + doneN + ")</button>"
-            : "") +
-          (archN
-            ? '<button type="button" class="btn" data-sh="viewarch">Pokaż archiwum zadań (' + archN + ")</button>"
-            : "") +
-          "</div>" +
-          semRows
-        );
-      })() +
-      '<h3 class="sec">Kopia zapasowa i import</h3>' +
-      '<p class="hint">Import pliku JSON pozwala zaktualizować wyłącznie plan zajęć (np. nowy plik z eStudiaTools po zmianie sal — bez utraty zadań, notatek i nieobecności) albo zastąpić całą bazę z kopii zapasowej.</p>' +
-      '<div class="acts"><button type="button" class="btn" data-sh="export">Eksportuj plan</button><button type="button" class="btn" data-sh="import">Importuj plan</button><button type="button" class="btn dng" data-sh="reset">Przywróć plan domyślny</button></div>' +
-      '<input type="file" id="impf" accept=".json,application/json" hidden>' +
-      '<p id="bkMsg" class="msg" role="status" style="margin-top:8px"></p>' +
-      '<h3 class="sec">Tryb deweloperski (playground)</h3>' +
-      '<p class="hint">Odizolowane środowisko testowe. Wczytane pliki i wprowadzone zmiany zapisują się osobno i nigdy nie trafiają na GitHub. W każdej chwili wrócisz do swojego normalnego planu.</p>' +
-      (isDevMode()
-        ? '<p class="msg warn" role="status">Tryb deweloperski jest AKTYWNY — pracujesz na odizolowanej kopii testowej.</p>' +
-          '<div class="acts"><button type="button" class="btn" data-sh="devload">Wczytaj inny plik testowy (.json)</button><button type="button" class="btn" data-sh="devexport">Eksportuj plan testowy</button><button type="button" class="btn pri" data-sh="devexit">Wyłącz i wróć do normalnego planu</button></div>'
-        : '<div class="acts"><button type="button" class="btn" data-sh="devon">Włącz tryb deweloperski</button><button type="button" class="btn" data-sh="devload">Wczytaj plan testowy z pliku (.json)</button></div>') +
-      '<p id="devMsg" class="msg" role="status" style="margin-top:8px"></p>' +
+      semSection +
+      desktopOnlySections +
       '<p class="hint" style="margin-top:14px"><b>Wersja aplikacji: ' +
       APP_VERSION +
       "</b></p>" +
@@ -265,15 +284,17 @@ export function openSettings() {
   renderNotifState();
   renderPushDiag();
   dfRender();
-  $("semF").onsubmit = (ev) => {
-    ev.preventDefault();
-    const val = $("semF").elements.sem.value.trim();
-    const ok = change((pl) => {
-      if (val) pl.semester = val;
-      else delete pl.semester;
-    });
-    setMsg("semMsg", ok ? "Zapisano nazwę semestru ✓" : "Nie udało się zapisać.", ok ? "ok" : "bad");
-  };
+  if ($("semF")) {
+    $("semF").onsubmit = (ev) => {
+      ev.preventDefault();
+      const val = $("semF").elements.sem.value.trim();
+      const ok = change((pl) => {
+        if (val) pl.semester = val;
+        else delete pl.semester;
+      });
+      setMsg("semMsg", ok ? "Zapisano nazwę semestru ✓" : "Nie udało się zapisać.", ok ? "ok" : "bad");
+    };
+  }
   try {
     const pr = document.createElement("div");
     pr.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;padding-bottom:env(safe-area-inset-bottom,0px)";
@@ -347,28 +368,30 @@ export function openSettings() {
     );
   };
 
-  $("impf").onchange = async (ev) => {
-    const file = ev.target.files[0];
-    ev.target.value = "";
-    if (!file) return;
-    if (file.size > 1e6) {
-      setMsg("bkMsg", "Plik jest zbyt duży.", "bad");
-      return;
-    }
-    let raw;
-    try {
-      raw = JSON.parse(await file.text());
-    } catch (e) {
-      setMsg("bkMsg", "Plik nie jest poprawnym plikiem JSON.", "bad");
-      return;
-    }
-    const v = validatePlan(raw);
-    if (!v.ok) {
-      setMsg("bkMsg", v.error, "bad");
-      return;
-    }
-    openImportDialog(file.name, v.plan);
-  };
+  if ($("impf")) {
+    $("impf").onchange = async (ev) => {
+      const file = ev.target.files[0];
+      ev.target.value = "";
+      if (!file) return;
+      if (file.size > 1e6) {
+        setMsg("bkMsg", "Plik jest zbyt duży.", "bad");
+        return;
+      }
+      let raw;
+      try {
+        raw = JSON.parse(await file.text());
+      } catch (e) {
+        setMsg("bkMsg", "Plik nie jest poprawnym plikiem JSON.", "bad");
+        return;
+      }
+      const v = validatePlan(raw);
+      if (!v.ok) {
+        setMsg("bkMsg", v.error, "bad");
+        return;
+      }
+      openImportDialog(file.name, v.plan);
+    };
+  }
 }
 
 function fmtImportSlot(c) {
@@ -439,6 +462,7 @@ function openImportDialog(fileName, importedPlan) {
       "</div>";
   }
 
+  ui.ctx = { view: "import" };
   openSheet(
     "Import planu",
     '<p class="shsub">Plik „' +
@@ -478,6 +502,7 @@ function openImportDialog(fileName, importedPlan) {
 export function openConflict() {
   if (!conflict) return;
   ui.conflictShown = true;
+  ui.ctx = { view: "conflict" };
   openSheet(
     "Konflikt zmian",
     '<p class="shsub">Plan na GitHubie zmienił się, a na tym urządzeniu masz niewysłane zmiany. Którą wersję zachować?</p>' +
@@ -532,6 +557,7 @@ export function openArchivedTasks() {
         '">×</button></div></div>'
     )
     .join("");
+  ui.ctx = { view: "archived" };
   openSheet(
     "Archiwum zadań (" + list.length + ")",
     (list.length ? '<div class="tk-list">' + rows + "</div>" : '<p class="tk-empty">Archiwum zadań jest puste.</p>') +
@@ -542,6 +568,7 @@ export function openArchivedTasks() {
 export function openNewSemester() {
   const curName = cache.plan.semester || "Semestr " + ((Array.isArray(cache.plan.semesters) ? cache.plan.semesters.length : 0) + 1);
   const nextNum = (Array.isArray(cache.plan.semesters) ? cache.plan.semesters.length : 0) + 2;
+  ui.ctx = { view: "newsem" };
   openSheet(
     "Nowy semestr",
     '<p class="shsub">Bieżący plan zostanie zapisany w archiwum semestrów jako <b>' +
