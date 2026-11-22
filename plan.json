@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795385710772,
+  "rev": 1795385730090,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -167,17 +167,6 @@
       "e": "13:00",
       "room": "s. 11, WM",
       "person": ""
-    },
-    {
-      "id": "kmwse9d2grhlmk",
-      "name": "Andrzejki Politechniki Lubelskiej",
-      "type": "x",
-      "date": "2026-11-26",
-      "s": "21:00",
-      "e": "23:59",
-      "room": "Kazik",
-      "person": "Zenek Martyniuk",
-      "manual": true
     }
   ],
   "exceptions": [
