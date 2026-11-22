@@ -327,6 +327,7 @@ export function validatePlan(raw) {
     o.e = e;
     o.room = str(c.room, 80);
     o.person = str(c.person, 80);
+    if (c.manual === true) o.manual = true;
     classes.push(o);
   }
 
@@ -825,9 +826,14 @@ export function morningSummary(plan, dateObj = new Date()) {
   };
 }
 
+/* Czy zajęcia/wydarzenie zostało dodane ręcznie w aplikacji (flaga manual lub historyczne ID z uid() postaci k...) */
+export const isManualClass = (c) =>
+  !!(c && (c.manual === true || /^k[0-9a-z]{6,}$/.test(String(c.id || ""))));
+
 /* Aktualizacja samego planu zajęć z nowego pliku JSON (np. po zmianie sal w eStudiaTools):
-   podmienia zajęcia i definicje typów/kolorów, mapuje stare ID zajęć na nowe (1-do-1),
-   a zachowuje zadania, przedmioty/notatki, nieobecności, limity, wyjątki, rytm A/B,
+   podmienia zajęcia z planu i definicje typów/kolorów, mapuje stare ID zajęć na nowe (1-do-1),
+   dopisuje i zachowuje ręcznie dodane zajęcia/wydarzenia (cykliczne i jednorazowe),
+   a także zachowuje zadania, przedmioty/notatki, nieobecności, limity, wyjątki, rytm A/B,
    nadpisania dni, powiadomienia oraz archiwum semestrów. */
 export function mergeSchedule(currentPlan, importedPlan) {
   const curV = validatePlan(currentPlan);
@@ -894,27 +900,31 @@ export function mergeSchedule(currentPlan, importedPlan) {
     if (diffs.length) updated.push({ old: clone(oc), next: clone(nc), diffs });
   }
 
-  /* Jeśli importowany plik nie zawiera zajęć jednorazowych, zachowaj ręcznie dodane zajęcia jednorazowe z obecnego planu */
+  /* Dopisz ręcznie dodane zajęcia/wydarzenia (cykliczne i jednorazowe) oraz jednorazowe z obecnego planu,
+     jeśli importowany plik ich nie zawiera — bez usuwania przy aktualizacji planu z PDF */
   const usedIds = new Set(newClasses.map((c) => c.id));
-  const preservedOneOffIdx = new Set();
+  const preservedIdx = new Set();
+  const keptManual = [];
   let keptOneOff = 0;
-  if (!incomingHasOneOff) {
-    for (let oi = 0; oi < oldClasses.length; oi++) {
-      if (matchedOld.has(oi)) continue;
-      const oc = oldClasses[oi];
-      if (!oc.date) continue;
-      const copy = clone(oc);
-      if (usedIds.has(copy.id)) {
-        let nextId = uid();
-        while (usedIds.has(nextId)) nextId = uid();
-        copy.id = nextId;
-      }
-      usedIds.add(copy.id);
-      cidMap.set(oc.id, copy.id);
-      newClasses.push(copy);
-      preservedOneOffIdx.add(oi);
-      keptOneOff++;
+  for (let oi = 0; oi < oldClasses.length; oi++) {
+    if (matchedOld.has(oi)) continue;
+    const oc = oldClasses[oi];
+    const manual = isManualClass(oc);
+    const keepOneOff = !incomingHasOneOff && !!oc.date;
+    if (!manual && !keepOneOff) continue;
+    const copy = clone(oc);
+    if (manual) copy.manual = true;
+    if (usedIds.has(copy.id)) {
+      let nextId = uid();
+      while (usedIds.has(nextId)) nextId = uid();
+      copy.id = nextId;
     }
+    usedIds.add(copy.id);
+    cidMap.set(oc.id, copy.id);
+    newClasses.push(copy);
+    preservedIdx.add(oi);
+    keptManual.push(clone(copy));
+    if (copy.date) keptOneOff++;
   }
 
   const added = [];
@@ -923,10 +933,10 @@ export function mergeSchedule(currentPlan, importedPlan) {
   }
   const removed = [];
   for (let oi = 0; oi < oldClasses.length; oi++) {
-    if (!matchedOld.has(oi) && !preservedOneOffIdx.has(oi)) removed.push(clone(oldClasses[oi]));
+    if (!matchedOld.has(oi) && !preservedIdx.has(oi)) removed.push(clone(oldClasses[oi]));
   }
 
-  /* Definicje typów: nowe z importu + ewentualne zachowane dla istniejących form przedmiotów lub jednorazowych zajęć */
+  /* Definicje typów: nowe z importu + ewentualne zachowane dla istniejących form przedmiotów lub ręcznych zajęć */
   let mergedTypes;
   if (inc.types) {
     mergedTypes = clone(inc.types);
@@ -1033,6 +1043,7 @@ export function mergeSchedule(currentPlan, importedPlan) {
       updated,
       added,
       removed,
+      keptManual,
       keptOneOff,
       typesChanged,
       totalClasses: out.plan.classes.length,

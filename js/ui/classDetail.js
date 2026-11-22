@@ -293,11 +293,15 @@ export function openForm(o) {
       if (eid) {
         const i = p.classes.findIndex((x) => x.id === eid);
         const old = p.classes[i];
+        if (old && old.manual) cls.manual = true;
         if (old.date !== cls.date || old.wd !== cls.wd || old.weeks !== cls.weeks) {
           p.exceptions = p.exceptions.filter((x) => x.cid !== eid);
         }
         p.classes[i] = cls;
-      } else p.classes.push(cls);
+      } else {
+        cls.manual = true;
+        p.classes.push(cls);
+      }
     }, eid ? "Zapisano zmiany" : "Dodano zajęcia");
     if (ok) {
       if (cls.date) {

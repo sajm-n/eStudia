@@ -39,6 +39,7 @@ import {
   typeOrderIndex,
   typePairsOf,
   mergeSchedule,
+  isManualClass,
 } from "../js/core.js";
 import { DEFAULT_PLAN } from "../js/config.js";
 
@@ -620,6 +621,58 @@ test("v2.9.1: mergeSchedule aktualizuje plan zajęć i przemapowuje ID bez utrat
   assert.equal(res.stats.keptOneOff, 1);
   assert.equal(res.stats.typesChanged, true);
 });
+
+test("v2.9.2: mergeSchedule dopisuje ręcznie dodane zajęcia i wydarzenia (cykliczne i jednorazowe)", () => {
+  const current = {
+    v: 1,
+    start: "2026-10-05",
+    startWeek: "B",
+    classes: [
+      { id: "c01", name: "Matematyka I", type: "w", wd: 0, weeks: "all", s: "08:00", e: "09:30", room: "s. 101", person: "dr A" },
+      { id: "c02", name: "Stary przedmiot", type: "c", wd: 1, weeks: "all", s: "10:00", e: "11:30", room: "s. 10", person: "mgr X" },
+      /* Ręcznie dodane zajęcia cykliczne (nowy format z flagą manual: true) */
+      { id: "knewmanual123", name: "Koło naukowe", type: "x", wd: 2, weeks: "all", s: "18:00", e: "19:30", room: "s. 12", person: "", manual: true },
+      /* Historyczne ręczne wydarzenie jednorazowe (ID k... bez flagi manual — jak w istniejącym plan.json) */
+      { id: "kmva1syj04f32j", name: "Otrzęsiny Politechniki", type: "x", date: "2026-10-16", s: "21:00", e: "23:59", room: "Kazik", person: "" },
+    ],
+    absences: [{ cid: "knewmanual123", date: "2026-10-14" }],
+  };
+
+  /* Importowany plik z PDF zawiera własne zajęcia jednorazowe o01 — ręczne wydarzenia nadal muszą zostać dopisane! */
+  const incoming = {
+    v: 1,
+    start: "2026-11-02",
+    startWeek: "A",
+    classes: [
+      { id: "c01", name: "Matematyka I", type: "w", wd: 0, weeks: "all", s: "08:00", e: "09:30", room: "s. 205", person: "dr A" },
+      { id: "o01", name: "Wykład gościnny z PDF", type: "w", date: "2026-11-27", s: "12:00", e: "13:30", room: "Aula", person: "" },
+    ],
+  };
+
+  assert.equal(isManualClass(current.classes[0]), false);
+  assert.equal(isManualClass(current.classes[2]), true);
+  assert.equal(isManualClass(current.classes[3]), true);
+
+  const res = mergeSchedule(current, incoming);
+  assert.equal(res.ok, true, res.error || "");
+  const p = res.plan;
+
+  /* c01 zaktualizowane, o01 z PDF dodane, oba ręczne dopisane, c02 (nie-ręczne) usunięte */
+  assert.equal(p.classes.length, 4);
+  assert.equal(p.classes.find((c) => c.name === "Matematyka I").room, "s. 205");
+  assert.ok(p.classes.some((c) => c.name === "Wykład gościnny z PDF"));
+  const kolo = p.classes.find((c) => c.name === "Koło naukowe");
+  const otrz = p.classes.find((c) => c.name === "Otrzęsiny Politechniki");
+  assert.ok(kolo && kolo.manual === true);
+  assert.ok(otrz && otrz.manual === true);
+  assert.equal(p.classes.some((c) => c.name === "Stary przedmiot"), false);
+
+  /* Nieobecności na ręcznych zajęciach zachowane */
+  assert.deepEqual(p.absences, [{ cid: "knewmanual123", date: "2026-10-14" }]);
+  assert.equal(res.stats.keptManual.length, 2);
+  assert.equal(res.stats.removed.length, 1);
+});
+
 
 
 

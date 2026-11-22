@@ -426,6 +426,7 @@ function openImportDialog(fileName, importedPlan) {
     if (st.updated.length) summaryParts.push(st.updated.length + " zaktualizowane");
     if (st.added.length) summaryParts.push(st.added.length + " dodane");
     if (st.removed.length) summaryParts.push(st.removed.length + " usunięte");
+    if (st.keptManual && st.keptManual.length) summaryParts.push("zachowano " + st.keptManual.length + " ręczne");
     if (st.typesChanged) summaryParts.push("zmienione typy/kolory");
     const summaryText = summaryParts.length
       ? "Wykryte zmiany: " + summaryParts.join(" · ")
@@ -446,7 +447,7 @@ function openImportDialog(fileName, importedPlan) {
       importedPlan.classes.length +
       " zajęć). Wybierz sposób wczytania:</p>" +
       diffHtml +
-      '<p class="hint"><b>Aktualizacja samego planu</b> podmieni zajęcia oraz typy/kolory, a zachowa Twoje zadania, notatki przy przedmiotach, nieobecności, wyjątki, rytm A/B, powiadomienia i archiwum semestrów.</p>' +
+      '<p class="hint"><b>Aktualizacja samego planu</b> podmieni zajęcia z planu oraz typy/kolory, a zachowa i dopisze Twoje ręcznie dodane zajęcia/wydarzenia, zadania, notatki przy przedmiotach, nieobecności, wyjątki, rytm A/B, powiadomienia i archiwum semestrów.</p>' +
       (merged.ok
         ? '<button type="button" class="btn pri blk" id="impMerge">Zaktualizuj tylko plan zajęć (zachowaj dane)</button>'
         : "") +
