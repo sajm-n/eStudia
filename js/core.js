@@ -328,6 +328,7 @@ export function validatePlan(raw) {
     o.room = str(c.room, 80);
     o.person = str(c.person, 80);
     if (c.manual === true) o.manual = true;
+    if (c.edited === true) o.edited = true;
     classes.push(o);
   }
 
@@ -835,11 +836,15 @@ export const isManualClass = (c) =>
    dopisuje i zachowuje ręcznie dodane zajęcia/wydarzenia (cykliczne i jednorazowe),
    a także zachowuje zadania, przedmioty/notatki, nieobecności, limity, wyjątki, rytm A/B,
    nadpisania dni, powiadomienia oraz archiwum semestrów. */
-export function mergeSchedule(currentPlan, importedPlan) {
+export function mergeSchedule(currentPlan, importedPlan, opts = {}) {
   const curV = validatePlan(currentPlan);
   if (!curV.ok) return { ok: false, error: curV.error };
   const incV = validatePlan(importedPlan);
   if (!incV.ok) return { ok: false, error: incV.error };
+
+  const keepEdited = !!(opts && opts.keepEdited);
+  const keepIds = new Set(opts && opts.keepIds ? opts.keepIds : []);
+  const overrideIds = new Set(opts && opts.overrideIds ? opts.overrideIds : []);
 
   const cur = curV.plan;
   const inc = incV.plan;
@@ -884,6 +889,7 @@ export function mergeSchedule(currentPlan, importedPlan) {
   const matchedNew = new Set();
   const cidMap = new Map();
   const updated = [];
+  const keptEdited = [];
 
   for (const cand of candidates) {
     if (matchedOld.has(cand.oi) || matchedNew.has(cand.ni)) continue;
@@ -897,7 +903,19 @@ export function mergeSchedule(currentPlan, importedPlan) {
     if (oc.wd !== nc.wd || oc.weeks !== nc.weeks || oc.s !== nc.s || oc.e !== nc.e) diffs.push("time");
     if (norm(oc.room) !== norm(nc.room)) diffs.push("room");
     if (norm(oc.person) !== norm(nc.person)) diffs.push("person");
-    if (diffs.length) updated.push({ old: clone(oc), next: clone(nc), diffs });
+
+    const shouldKeep = !overrideIds.has(oc.id) && (keepIds.has(oc.id) || (keepEdited && oc.edited === true));
+    if (shouldKeep) {
+      const preserved = clone(oc);
+      preserved.id = nc.id;
+      if (diffs.length || oc.edited === true || keepIds.has(oc.id)) preserved.edited = true;
+      newClasses[cand.ni] = preserved;
+      if (diffs.length) keptEdited.push({ old: clone(oc), incoming: clone(nc), diffs });
+    } else if (diffs.length) {
+      updated.push({ old: clone(oc), next: clone(nc), diffs });
+    } else if (oc.edited === true && !overrideIds.has(oc.id)) {
+      nc.edited = true;
+    }
   }
 
   /* Dopisz ręcznie dodane zajęcia/wydarzenia (cykliczne i jednorazowe) oraz jednorazowe z obecnego planu,
@@ -911,9 +929,11 @@ export function mergeSchedule(currentPlan, importedPlan) {
     const oc = oldClasses[oi];
     const manual = isManualClass(oc);
     const keepOneOff = !incomingHasOneOff && !!oc.date;
-    if (!manual && !keepOneOff) continue;
+    const keepExplicit = keepIds.has(oc.id) && !overrideIds.has(oc.id);
+    if (!manual && !keepOneOff && !keepExplicit) continue;
     const copy = clone(oc);
     if (manual) copy.manual = true;
+    if (keepExplicit) copy.edited = true;
     if (usedIds.has(copy.id)) {
       let nextId = uid();
       while (usedIds.has(nextId)) nextId = uid();
@@ -1041,6 +1061,7 @@ export function mergeSchedule(currentPlan, importedPlan) {
     stats: {
       matched: matchedNew.size,
       updated,
+      keptEdited,
       added,
       removed,
       keptManual,

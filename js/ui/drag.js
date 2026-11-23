@@ -99,6 +99,7 @@ function commitDrop(info) {
       const c = p.classes.find((x) => x.id === cid);
       if (!c) return;
       const wdChanged = c.wd !== newWd;
+      if (wdChanged || c.s !== newS || c.e !== newE) c.edited = true;
       c.wd = newWd;
       c.s = newS;
       c.e = newE;

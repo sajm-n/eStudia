@@ -729,6 +729,72 @@ test("v3.0.0: subjectsOf usuwa pojedyncze minione zajęcia jednorazowe, a serie 
   assert.deepEqual(etykaEntries[0].persons, ["dr E", "dr F"]);
 });
 
+test("v3.0.1: mergeSchedule zachowuje własne zmiany w planie (keepEdited, keepIds, overrideIds)", () => {
+  const cur = {
+    v: 1,
+    start: "2026-10-05",
+    startWeek: "B",
+    classes: [
+      /* Zajęcia oznaczone jako ręcznie edytowane (umówiona inna godzina i sala) */
+      { id: "c01", name: "Matematyka I", type: "w", wd: 2, weeks: "all", s: "10:00", e: "11:30", room: "s. 999", person: "dr A", edited: true },
+      /* Zajęcia zmienione wcześniej (bez flagi edited) */
+      { id: "c02", name: "Fizyka", type: "l", wd: 3, weeks: "all", s: "14:00", e: "15:30", room: "lab 7", person: "mgr B" },
+      /* Zwykłe zajęcia, w których uczelnia zmieniła salę */
+      { id: "c03", name: "Algorytmy", type: "c", wd: 4, weeks: "all", s: "08:00", e: "09:30", room: "s. 101", person: "dr C" },
+    ],
+    tasks: [
+      { id: "t1", cid: "c01", sid: "", at: 1, date: "2026-10-14", text: "Zadanie 1", due: "2026-10-14", time: "10:00", url: "", note: "", done: false },
+    ],
+    absences: [{ cid: "c01", date: "2026-10-07" }],
+  };
 
+  /* Oficjalny PDF z uczelni (przesunięte ID, stare godziny dla c01/c02, nowa sala dla c03) */
+  const inc = {
+    v: 1,
+    start: "2026-10-05",
+    startWeek: "B",
+    classes: [
+      { id: "n01", name: "Matematyka I", type: "w", wd: 0, weeks: "all", s: "08:00", e: "09:30", room: "Aula 1", person: "dr A" },
+      { id: "n02", name: "Fizyka", type: "l", wd: 1, weeks: "all", s: "12:00", e: "13:30", room: "lab 1", person: "mgr B" },
+      { id: "n03", name: "Algorytmy", type: "c", wd: 4, weeks: "all", s: "08:00", e: "09:30", room: "s. 205", person: "dr C" },
+    ],
+  };
 
+  /* 1. validatePlan zachowuje flagę edited: true */
+  const vc = validatePlan(cur);
+  assert.equal(vc.ok, true);
+  assert.equal(vc.plan.classes[0].edited, true);
+  assert.equal(vc.plan.classes[1].edited, undefined);
 
+  /* 2. keepEdited: true + keepIds: ["c02"] zachowuje c01 i c02 (nadaje c02 edited: true), a aktualizuje c03 */
+  const r1 = mergeSchedule(cur, inc, { keepEdited: true, keepIds: ["c02"] });
+  assert.equal(r1.ok, true);
+  const m1 = r1.plan.classes.find((c) => c.name === "Matematyka I");
+  const f1 = r1.plan.classes.find((c) => c.name === "Fizyka");
+  const a1 = r1.plan.classes.find((c) => c.name === "Algorytmy");
+  assert.equal(m1.id, "n01");
+  assert.equal(m1.wd, 2);
+  assert.equal(m1.s, "10:00");
+  assert.equal(m1.room, "s. 999");
+  assert.equal(m1.edited, true);
+  assert.equal(f1.id, "n02");
+  assert.equal(f1.wd, 3);
+  assert.equal(f1.room, "lab 7");
+  assert.equal(f1.edited, true);
+  assert.equal(a1.room, "s. 205");
+  assert.equal(a1.edited, undefined);
+  assert.equal(r1.stats.keptEdited.length, 2);
+  assert.equal(r1.stats.updated.length, 1);
+  /* Powiązania zadań i nieobecności przemapowane na nowe ID */
+  assert.equal(r1.plan.tasks[0].cid, "n01");
+  assert.deepEqual(r1.plan.absences, [{ cid: "n01", date: "2026-10-07" }]);
+
+  /* 3. overrideIds: ["c01"] nadpisuje wcześniej edytowane zajęcia nową wersją z pliku i zdejmuje edited */
+  const r2 = mergeSchedule(cur, inc, { keepEdited: true, overrideIds: ["c01"] });
+  assert.equal(r2.ok, true);
+  const m2 = r2.plan.classes.find((c) => c.name === "Matematyka I");
+  assert.equal(m2.wd, 0);
+  assert.equal(m2.room, "Aula 1");
+  assert.equal(m2.edited, undefined);
+  assert.equal(r2.stats.keptEdited.length, 0);
+});

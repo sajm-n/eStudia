@@ -307,6 +307,18 @@ export function openForm(o) {
         const i = p.classes.findIndex((x) => x.id === eid);
         const old = p.classes[i];
         if (old && old.manual) cls.manual = true;
+        const changed =
+          !old ||
+          old.name !== cls.name ||
+          old.type !== cls.type ||
+          old.date !== cls.date ||
+          old.wd !== cls.wd ||
+          old.weeks !== cls.weeks ||
+          old.s !== cls.s ||
+          old.e !== cls.e ||
+          old.room !== cls.room ||
+          old.person !== cls.person;
+        if ((old && old.edited) || changed) cls.edited = true;
         if (old.date !== cls.date || old.wd !== cls.wd || old.weeks !== cls.weeks) {
           p.exceptions = p.exceptions.filter((x) => x.cid !== eid);
         }

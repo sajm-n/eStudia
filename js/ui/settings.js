@@ -401,36 +401,71 @@ function fmtImportSlot(c) {
   return (DOWS[c.wd] || "") + wk + " " + hrs;
 }
 
-function fmtDiffRow(item, plan) {
+function fmtDiffRow(item, plan, kept) {
   const { old, next, diffs } = item;
   const lbl = typeLabel(plan, next.type);
   const parts = [];
   if (diffs.includes("time")) parts.push(fmtImportSlot(old) + " → " + fmtImportSlot(next));
   if (diffs.includes("room")) parts.push("sala " + (old.room || "brak") + " → " + (next.room || "brak"));
   if (diffs.includes("person")) parts.push((old.person || "brak") + " → " + (next.person || "brak"));
-  return '<li class="chg"><b>' + esc(next.name) + "</b> (" + esc(lbl) + "): " + esc(parts.join(" · ")) + "</li>";
+  const badge = old.edited ? ' <span class="imp-tag">własna zmiana</span>' : "";
+  return (
+    '<li class="chg' +
+    (kept ? " kept" : "") +
+    '"><label class="imp-pick"><input type="checkbox" data-imp-keep="' +
+    esc(old.id) +
+    '"' +
+    (kept ? " checked" : "") +
+    '><span><b>' +
+    esc(next.name) +
+    "</b> (" +
+    esc(lbl) +
+    ")" +
+    badge +
+    ": " +
+    esc(parts.join(" · ")) +
+    "</span></label></li>"
+  );
 }
 
 function openImportDialog(fileName, importedPlan) {
-  const merged = mergeSchedule(cache.plan, importedPlan);
-  const st = merged.ok ? merged.stats : null;
+  const preview = mergeSchedule(cache.plan, importedPlan);
+  const st = preview.ok ? preview.stats : null;
+  const updatedList = st ? st.updated : [];
+  const taggedIds = new Set(updatedList.filter((u) => u.old.edited === true).map((u) => u.old.id));
+  const keptSet = new Set(taggedIds);
+
+  const buildSummary = () => {
+    if (!st) return "";
+    const parts = [];
+    const applyCount = updatedList.length - keptSet.size;
+    if (applyCount > 0) parts.push(applyCount + " zaktualizowane");
+    if (keptSet.size > 0) parts.push("zachowasz " + keptSet.size + " własne zmiany");
+    if (st.added.length) parts.push(st.added.length + " dodane");
+    if (st.removed.length) parts.push(st.removed.length + " usunięte");
+    if (st.keptManual && st.keptManual.length) parts.push("zachowano " + st.keptManual.length + " ręczne");
+    if (st.typesChanged) parts.push("zmienione typy/kolory");
+    return parts.length ? "Wykryte zmiany: " + parts.join(" · ") : "Plan zajęć w pliku jest identyczny z obecnym.";
+  };
+
   let diffHtml = "";
   if (st) {
     const lines = [];
-    for (const u of st.updated) lines.push(fmtDiffRow(u, merged.plan));
+    for (const u of updatedList) lines.push(fmtDiffRow(u, preview.plan, keptSet.has(u.old.id)));
+    const extra = [];
     for (const a of st.added) {
-      lines.push(
+      extra.push(
         '<li class="add"><b>+ ' +
           esc(a.name) +
           "</b> (" +
-          esc(typeLabel(merged.plan, a.type)) +
+          esc(typeLabel(preview.plan, a.type)) +
           "): " +
           esc(fmtImportSlot(a) + (a.room ? ", " + a.room : "")) +
           "</li>"
       );
     }
     for (const r of st.removed) {
-      lines.push(
+      extra.push(
         '<li class="rem"><b>− ' +
           esc(r.name) +
           "</b> (" +
@@ -440,27 +475,30 @@ function openImportDialog(fileName, importedPlan) {
           "</li>"
       );
     }
-    const maxShow = 8;
-    const shown = lines.slice(0, maxShow);
-    if (lines.length > maxShow) {
-      shown.push('<li class="more">…i jeszcze ' + (lines.length - maxShow) + " zmian</li>");
+    const maxExtra = 8;
+    lines.push(...extra.slice(0, maxExtra));
+    if (extra.length > maxExtra) {
+      lines.push('<li class="more">…i jeszcze ' + (extra.length - maxExtra) + " dodanych/usuniętych</li>");
     }
-    const summaryParts = [];
-    if (st.updated.length) summaryParts.push(st.updated.length + " zaktualizowane");
-    if (st.added.length) summaryParts.push(st.added.length + " dodane");
-    if (st.removed.length) summaryParts.push(st.removed.length + " usunięte");
-    if (st.keptManual && st.keptManual.length) summaryParts.push("zachowano " + st.keptManual.length + " ręczne");
-    if (st.typesChanged) summaryParts.push("zmienione typy/kolory");
-    const summaryText = summaryParts.length
-      ? "Wykryte zmiany: " + summaryParts.join(" · ")
-      : "Plan zajęć w pliku jest identyczny z obecnym.";
     diffHtml =
-      '<div class="imp-diff"><p class="imp-sum">' +
-      esc(summaryText) +
+      '<div class="imp-diff"><p class="imp-sum" id="impSum">' +
+      esc(buildSummary()) +
       "</p>" +
-      (shown.length ? "<ul>" + shown.join("") + "</ul>" : "") +
+      (updatedList.length
+        ? '<p class="imp-sub">Zaznacz zajęcia, dla których chcesz zachować swoją obecną wersję (zostaną zapamiętane przy kolejnych importach):</p>'
+        : "") +
+      (lines.length ? "<ul>" + lines.join("") + "</ul>" : "") +
       "</div>";
   }
+
+  const keepChkHtml =
+    preview.ok && updatedList.length
+      ? '<label class="chkrow"><input type="checkbox" id="impKeepAll"' +
+        (keptSet.size > 0 ? " checked" : "") +
+        "><span>Zachowaj zmiany w planie" +
+        (taggedIds.size ? " (" + taggedIds.size + " wykryte własne)" : "") +
+        "</span></label>"
+      : "";
 
   ui.ctx = { view: "import" };
   openSheet(
@@ -471,13 +509,51 @@ function openImportDialog(fileName, importedPlan) {
       importedPlan.classes.length +
       " zajęć). Wybierz sposób wczytania:</p>" +
       diffHtml +
-      '<p class="hint"><b>Aktualizacja samego planu</b> podmieni zajęcia z planu oraz typy/kolory, a zachowa i dopisze Twoje ręcznie dodane zajęcia/wydarzenia, zadania, notatki przy przedmiotach, nieobecności, wyjątki, rytm A/B, powiadomienia i archiwum semestrów.</p>' +
-      (merged.ok
+      keepChkHtml +
+      '<p class="hint"><b>Aktualizacja samego planu</b> podmieni zajęcia z planu oraz typy/kolory, a zachowa Twoje zadania, notatki przy przedmiotach, nieobecności, wyjątki, rytm A/B, powiadomienia, archiwum semestrów oraz ręcznie dodane zajęcia — a przy zaznaczeniu powyżej także Twoje zmiany w istniejących zajęciach.</p>' +
+      (preview.ok
         ? '<button type="button" class="btn pri blk" id="impMerge">Zaktualizuj tylko plan zajęć (zachowaj dane)</button>'
         : "") +
       '<button type="button" class="btn dng blk" id="impReplace">Zastąp cały plan (nadpisz wszystko)</button>' +
       '<button type="button" class="btn blk" data-sh="close">Anuluj</button>'
   );
+
+  const syncKeepUi = () => {
+    const sumEl = $("impSum");
+    if (sumEl) sumEl.textContent = buildSummary();
+    const master = $("impKeepAll");
+    if (master) {
+      master.checked = keptSet.size > 0;
+      master.indeterminate = keptSet.size > 0 && keptSet.size < updatedList.length;
+    }
+    document.querySelectorAll("[data-imp-keep]").forEach((cb) => {
+      const id = cb.dataset.impKeep;
+      const on = keptSet.has(id);
+      cb.checked = on;
+      const li = cb.closest("li");
+      if (li) li.classList.toggle("kept", on);
+    });
+  };
+
+  if ($("impKeepAll")) {
+    syncKeepUi();
+    $("impKeepAll").onchange = (ev) => {
+      keptSet.clear();
+      if (ev.target.checked) {
+        const targets = taggedIds.size ? taggedIds : new Set(updatedList.map((u) => u.old.id));
+        for (const id of targets) keptSet.add(id);
+      }
+      syncKeepUi();
+    };
+  }
+  document.querySelectorAll("[data-imp-keep]").forEach((cb) => {
+    cb.onchange = () => {
+      const id = cb.dataset.impKeep;
+      if (cb.checked) keptSet.add(id);
+      else keptSet.delete(id);
+      syncKeepUi();
+    };
+  });
 
   const applyImport = (nextPlan, okMsg) => {
     const before = cache.plan;
@@ -493,8 +569,23 @@ function openImportDialog(fileName, importedPlan) {
     });
   };
 
-  if ($("impMerge") && merged.ok) {
-    $("impMerge").onclick = () => applyImport(merged.plan, "Zaktualizowano plan zajęć ✓");
+  if ($("impMerge") && preview.ok) {
+    $("impMerge").onclick = () => {
+      const overrideIds = updatedList.filter((u) => !keptSet.has(u.old.id)).map((u) => u.old.id);
+      const res = mergeSchedule(cache.plan, importedPlan, {
+        keepEdited: keptSet.size > 0,
+        keepIds: Array.from(keptSet),
+        overrideIds,
+      });
+      if (!res.ok) {
+        toast("Nie udało się zaimportować: " + res.error);
+        return;
+      }
+      const msg = res.stats.keptEdited.length
+        ? "Zaktualizowano plan (zachowano " + res.stats.keptEdited.length + " własne zmiany) ✓"
+        : "Zaktualizowano plan zajęć ✓";
+      applyImport(res.plan, msg);
+    };
   }
   $("impReplace").onclick = () => applyImport(importedPlan, "Zastąpiono cały plan ✓");
 }
