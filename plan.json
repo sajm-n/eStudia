@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795438539581,
+  "rev": 1795438548231,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -105,7 +105,7 @@
     },
     {
       "id": "c10",
-      "name": "Wprowadzenie do informatyki technicznej",
+      "name": "Wprowadzenie do informatyki technicznej (Online)",
       "type": "w",
       "wd": 3,
       "weeks": "A",
