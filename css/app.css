@@ -43,11 +43,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,.c[role="button"]:
 .w .tm{background:var(--wyk)}.l .tm{background:var(--lab)}.c2 .tm{background:var(--cw)}.x .tm{background:var(--oth)}
 .bd{padding:11px 12px;min-width:0;flex:1}
 .nm{font-weight:600;font-size:16px;line-height:1.25;overflow-wrap:anywhere}
-.mt{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:5px;font-size:13px;color:var(--mut)}
+.mt{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:5px;font-size:13px;color:var(--mut)}
 .ty{font-weight:600;color:var(--tx)}
 .ev{border:1px solid var(--bd);border-radius:6px;padding:0 6px;font-size:12px}
 .ev.warn{color:var(--warn);border-color:var(--warn)}
-.st{align-self:flex-start;margin:10px 10px 0 0;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--ac);color:var(--acx);white-space:nowrap}
+.st{display:inline-flex;align-items:center;font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--ac);color:var(--acx);white-space:nowrap;line-height:1.35}
 .st.nx{background:none;color:var(--ac);border:1px solid var(--ac)}
 h2{font-size:17px;font-weight:800;margin:20px 0 8px}
 .free{padding:26px 14px;text-align:center;color:var(--mut);border:1px dashed var(--bd);border-radius:12px}
