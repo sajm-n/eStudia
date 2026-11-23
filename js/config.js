@@ -1,6 +1,6 @@
 /* ===== Stałe i konfiguracja aplikacji eStudia ===== */
 
-export const APP_VERSION = "3.0.0";
+export const APP_VERSION = "3.0.1";
 
 export const TYPES = { w: "Wykład", l: "Laboratorium", c: "Ćwiczenia", p: "Projekt", x: "Inne" };
 export const DEFAULT_TYPE_COLORS = { w: "#3a5486", l: "#7d6a12", c: "#3f7440", p: "#5c3f84", x: "#4b5363" };
