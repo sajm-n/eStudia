@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795458204078,
+  "rev": 1795459205797,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -109,10 +109,11 @@
       "type": "w",
       "wd": 3,
       "weeks": "A",
-      "s": "11:00",
-      "e": "12:30",
+      "s": "10:00",
+      "e": "11:30",
       "room": "Online, Microsoft Teams",
-      "person": "dr hab. A. Kiersztyn"
+      "person": "dr hab. A. Kiersztyn",
+      "edited": true
     },
     {
       "id": "c11",
