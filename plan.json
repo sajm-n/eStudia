@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "rev": 1795418275691,
+  "rev": 1795438539581,
   "start": "2026-10-05",
   "startWeek": "B",
   "classes": [
@@ -107,10 +107,10 @@
       "id": "c10",
       "name": "Wprowadzenie do informatyki technicznej",
       "type": "w",
-      "wd": 2,
+      "wd": 3,
       "weeks": "A",
-      "s": "11:30",
-      "e": "13:00",
+      "s": "11:00",
+      "e": "12:30",
       "room": "Aula WZ/WMiIT",
       "person": "dr hab. A. Kiersztyn"
     },
