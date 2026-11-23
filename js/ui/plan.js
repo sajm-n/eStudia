@@ -464,40 +464,22 @@ function dayHtml(d, live) {
     return ban + '<div class="free">' + (ui.editMode ? "Brak zajęć. Dodaj je przyciskiem „+”." : "Brak zajęć") + "</div>";
   }
   const nm = ui.now.getHours() * 60 + ui.now.getMinutes();
-  const act = it.filter((x) => !x.off);
-  const nxItem = live ? act.find((x) => mn(x.c.s) > nm) : null;
   const td = day0(new Date());
   const st = same(d, td) ? "t" : d < td ? "p" : "f";
   let prev = null;
   const html = it
     .map((x) => {
       let cls = "";
-      let b = "";
       let g = "";
       if (!x.off) {
         g = prev ? gap(prev, x) : "";
         prev = x;
         if (live) {
-          if (nm >= mn(x.c.s) && nm < mn(x.c.e)) {
-            cls = "now";
-            b =
-              '<span class="st" data-cd="now" data-to="' +
-              mn(x.c.e) +
-              '">' +
-              liveBadgeText("now", mn(x.c.e) - nm, false) +
-              "</span>";
-          } else if (nm >= mn(x.c.e)) cls = "past";
-          else if (x === nxItem) {
-            b =
-              '<span class="st nx" data-cd="nx" data-to="' +
-              mn(x.c.s) +
-              '">' +
-              liveBadgeText("nx", mn(x.c.s) - nm, false) +
-              "</span>";
-          }
+          if (nm >= mn(x.c.s) && nm < mn(x.c.e)) cls = "now";
+          else if (nm >= mn(x.c.e)) cls = "past";
         } else if (st === "p" && !pre(d)) cls = "past";
       }
-      return g + card(x, cls, b);
+      return g + card(x, cls, "");
     })
     .join("");
   return (

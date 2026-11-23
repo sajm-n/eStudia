@@ -123,7 +123,7 @@ function getMorningWindow() {
   if (!sum) return null;
   const [hh, mm] = (m.time || "07:30").split(":").map(Number);
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0);
-  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 4 * 60 * 60 * 1000);
   return { id: morningId, start, end, payload: Object.assign({}, sum, { tag: "morning-" + todayKey, url: "./" }) };
 }
 
